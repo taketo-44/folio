@@ -11,6 +11,10 @@ python3 -m http.server 4173 --bind 127.0.0.1
 
 Open http://127.0.0.1:4173. Use an HTTP server rather than opening the HTML directly.
 
+## Windows home-network hosting
+
+See [WINDOWS-SETUP.md](WINDOWS-SETUP.md) for private HTTPS hosting on a Windows laptop with an existing home-network VPN. The `windows/` scripts generate Caddy configuration, start the server, and optionally configure a narrowly scoped firewall rule and startup at sign-in. This serves the existing browser-storage app; it does not add shared server storage.
+
 ## Features
 
 - Paper URLs, DOI lookup through Crossref, manual citations, and PDF uploads up to 50 MB.
@@ -40,3 +44,4 @@ Conference rank and journal impact factor values require a recorded source and y
 node --check dist/app.js
 node tests/data.test.mjs
 ```
+# folio
