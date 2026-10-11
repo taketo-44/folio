@@ -1,0 +1,11 @@
+{
+  "name": "folio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --check dist/app.js && node tests/data.test.mjs && node tests/metadata.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
