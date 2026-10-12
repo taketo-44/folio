@@ -271,3 +271,35 @@ for(const [name,doi,venue] of [['ccs','10.1145/3658644.3690339','ACM CCS'],['tif
  assert.match(node('#add-error').textContent,/already in your library/);
 }
 console.log('ACM links, real Crossref venue fixtures, save/cite, and DOI duplicate protection passed.');
+
+// Manage collections: rename every use, merge without duplicate tags, and remove only the tag.
+run("papers=[{id:'a',title:'A',authors:'',venue:'',notes:'Keep notes',pdfId:'keep-pdf',tags:['Crypto','Lattices'],status:'unread',importance:'normal',updated:1},{id:'b',title:'B',authors:'',venue:'',tags:['Crypto','Cryptography'],status:'read',importance:'high',updated:1}];settings={clientId:'keep-client',collections:['Crypto','Cryptography','Empty']};collection='Crypto';view='library'");
+run('manageCollections()');
+assert.match(node('#modal-content').innerHTML,/data-rename-tag="Crypto"/);
+assert.match(node('#modal-content').innerHTML,/data-remove-tag="Empty"/);
+await run("changeCollection('Crypto','Cryptography')");
+assert.deepEqual(Array.from(run('papers[0].tags')),['Cryptography','Lattices']);
+assert.deepEqual(Array.from(run('papers[1].tags')),['Cryptography']);
+assert.deepEqual(Array.from(run('settings.collections')),['Cryptography','Empty']);
+assert.equal(run('collection'),'Cryptography');
+assert.equal(run('location.hash'),'collection=Cryptography');
+assert.equal(JSON.parse(memory.get('folio-settings')).collections[0],'Cryptography');
+assert.deepEqual(JSON.parse(memory.get('folio-library-v1'))[1].tags,['Cryptography']);
+await run("changeCollection('Cryptography','cryptography')");
+assert.equal(run('papers[0].tags[0]'),'cryptography');
+await assert.rejects(run("changeCollection('cryptography','bad,name')"),/without commas/);
+await assert.rejects(run("changeCollection('cryptography','   ')"),/collection name/);
+assert.equal(run('papers[0].tags[0]'),'cryptography');
+await run("changeCollection('cryptography',null)");
+assert.equal(run('papers.length'),2);
+assert.deepEqual(Array.from(run('papers[0].tags')),['Lattices']);
+assert.equal(run('papers[0].notes'),'Keep notes');
+assert.equal(run('papers[0].pdfId'),'keep-pdf');
+assert.equal(run('settings.clientId'),'keep-client');
+assert.equal(run('collection'),'');
+await run("changeCollection('Empty','Empty renamed')");
+assert.ok(run("settings.collections.includes('Empty renamed')"));
+assert.match(run('desktopTagFilters()'),/data-manage-collections/);
+run('renderPhoneLibrary()');assert.match(node('#main').innerHTML,/data-manage-collections/);
+run("view='settings';renderSettings()");assert.match(node('#main').innerHTML,/Manage collections/);
+console.log('Collection manager: rename, merge, delete, empty collections, filters, and local persistence passed.');

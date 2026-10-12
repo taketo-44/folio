@@ -42,3 +42,30 @@ library={...library,revision:library.revision+1,papers:[{...library.papers[0],ti
 run("papers[0].title='Stale title'");await assert.rejects(run('save()'),/Changed on another device/);assert.equal(run('papers[0].title'),'Edited elsewhere');assert.equal(run('revision'),library.revision);
 conflict=false;failSave=true;run("papers[0].notes='Unconfirmed edit'");await assert.rejects(run('save()'),/Server unavailable/);assert.equal(run('papers[0].notes'),'');
 console.log('Passed: shared server library, optional Drive, direct PDF upload/read, no browser persistence, and failed/conflicting save recovery.');
+
+// Collection edits save papers and settings together in one server revision.
+failSave=false;
+run("settings.collections=['Crypto','Target'];collection='Crypto';view='library'");
+await run('save()');
+const putCount=()=>requests.filter(r=>r.path==='/api/library'&&r.options.method==='PUT').length;
+const beforeRename=putCount();
+await run("changeCollection('Crypto','Target')");
+assert.equal(putCount(),beforeRename+1);
+assert.deepEqual(library.papers[0].tags,['Target']);
+assert.deepEqual(library.settings.collections,['Target']);
+assert.equal(run('collection'),'Target');
+failSave=true;
+await assert.rejects(run("changeCollection('Target','Failed rename')"),/Server unavailable/);
+assert.equal(run('papers[0].tags[0]'),'Target');
+assert.equal(run('settings.collections[0]'),'Target');
+assert.equal(run('collection'),'Target');
+failSave=false;
+await run("changeCollection('Target',null)");
+assert.equal(library.papers.length,1);
+assert.deepEqual(library.papers[0].tags,[]);
+assert.deepEqual(library.settings.collections,[]);
+assert.equal(library.papers[0].drivePdfId,'drive-pdf');
+assert.equal(run('collection'),'');
+run('renderRemoteSettings()');assert.match(node('#main').innerHTML,/Manage collections/);
+assert.equal(localWrites,0);
+console.log('Collection edits: atomic remote persistence and failed-save recovery passed.');
