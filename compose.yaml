@@ -4,6 +4,7 @@ services:
     restart: unless-stopped
     environment:
       APP_ORIGIN: https://${FOLIO_DOMAIN:?Set FOLIO_DOMAIN in .env}
+      FOLIO_OWNER_USERNAME: ${FOLIO_OWNER_USERNAME:-owner}
       FOLIO_PASSWORD_HASH: ${FOLIO_PASSWORD_HASH:?Set a password hash in .env}
     volumes:
       - folio_data:/data

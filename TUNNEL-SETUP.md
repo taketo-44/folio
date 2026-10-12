@@ -37,7 +37,6 @@ sudo docker compose -p folio -f compose.tunnel.yaml ps
 
 Open the tunnel on your Mac, visit the loopback app URL, and sign in. Confirm a saved citation persists after refreshing and after restarting the container. This configuration does not publish port 3000 to the internet. Do not open port 3000 in Sakura's packet filter.
 
-For Google Drive, configure your OAuth client's Authorized JavaScript origin as `http://127.0.0.1:3000`. Google permits HTTP and loopback IPs for localhost development origins; arbitrary public IPs are not permitted. See [Google's origin validation rules](https://developers.google.com/identity/protocols/oauth2/javascript-implicit-flow). Connect Drive through Folio Settings as usual. Database and PDF behavior are the same as the domain deployment.
 
 ## Switch to domain hosting later
 
@@ -47,5 +46,3 @@ Set a real `FOLIO_DOMAIN` in `.env` and configure DNS and public Web ports as de
 sudo docker compose -p folio -f compose.tunnel.yaml down
 sudo docker compose -p folio -f compose.yaml up -d --build
 ```
-
-Both use `folio_data` under project `folio`, so the SQLite library is retained. Add the new HTTPS origin to the same Google OAuth client to retain access to that app's Drive files. This temporary Compose file has not been run in Docker in the development workspace, where Docker is unavailable; the underlying loopback HTTP server has passed integration tests.

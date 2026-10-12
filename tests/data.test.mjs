@@ -46,10 +46,10 @@ run("papers=[{id:'a',title:'Newer local',updated:200,added:100,tags:[],authors:'
 run("mergeBackup({version:1,papers:[{id:'a',title:'Older remote',updated:100,tags:[],drivePdfId:'drive-pdf'},{id:'b',title:'New paper',updated:10,tags:[]}]})");
 assert.equal(run('papers.length'),2);
 assert.equal(run('papers[0].title'),'Newer local');
-assert.equal(run('papers[0].drivePdfId'),'drive-pdf');
+assert.equal(run('papers[0].drivePdfId'),undefined);
 run("mergeBackup({version:1,papers:[{id:'a',title:'Newer remote',updated:300,tags:[]}]})");
 assert.equal(run('papers[0].title'),'Newer remote');
-assert.equal(run('papers[0].pdfId'),'local-pdf');
+assert.equal(run('papers[0].pdfId'),undefined);
 
 
 // Real lookup/save flow: preserve publisher links and resolved DOI, and reject duplicates.
@@ -294,8 +294,8 @@ await run("changeCollection('cryptography',null)");
 assert.equal(run('papers.length'),2);
 assert.deepEqual(Array.from(run('papers[0].tags')),['Lattices']);
 assert.equal(run('papers[0].notes'),'Keep notes');
-assert.equal(run('papers[0].pdfId'),'keep-pdf');
-assert.equal(run('settings.clientId'),'keep-client');
+assert.equal(run('papers[0].pdfId'),undefined);
+assert.equal(run('settings.clientId'),undefined);
 assert.equal(run('collection'),'');
 await run("changeCollection('Empty','Empty renamed')");
 assert.ok(run("settings.collections.includes('Empty renamed')"));
@@ -303,3 +303,20 @@ assert.match(run('desktopTagFilters()'),/data-manage-collections/);
 run('renderPhoneLibrary()');assert.match(node('#main').innerHTML,/data-manage-collections/);
 run("view='settings';renderSettings()");assert.match(node('#main').innerHTML,/Manage collections/);
 console.log('Collection manager: rename, merge, delete, empty collections, filters, and local persistence passed.');
+
+// Citation-only behavior: imports drop attachment state, URLs still work, and no PDF storage is opened.
+assert.equal(run('typeof pdfStore'),'undefined');
+assert.equal(run('typeof readPdf'),'undefined');
+assert.equal(run('typeof connectDrive'),'undefined');
+const legacyBackup=run("validateBackup({version:1,papers:[{id:'legacy-pdf',title:'Keep citation',url:'https://eprint.iacr.org/2006/139.pdf',notes:'Keep notes',tags:['Crypto'],pdfId:'old-cache',drivePdfId:'old-drive',pdfName:'old.pdf'}]})");
+assert.equal(legacyBackup[0].url,'https://eprint.iacr.org/2006/139.pdf');
+assert.equal(legacyBackup[0].notes,'Keep notes');
+for(const field of ['pdfId','drivePdfId','pdfName'])assert.equal(legacyBackup[0][field],undefined);
+run("papers=[{id:'edit-link',title:'Link paper',authors:'',venue:'',year:2026,tags:[],status:'unread',importance:'normal',notes:'',url:'https://example.com/old'}];details('edit-link')");
+assert.match(node('#modal-content').innerHTML,/Paper source link/);
+assert.doesNotMatch(node('#modal-content').innerHTML,/Read PDF|Attach PDF|iframe/);
+node('#detail-title').value='Link paper';node('#detail-url').value='https://example.com/new';node('#detail-tags').value='';node('#metric-value').value='';
+await node('#detail-form').onsubmit({preventDefault(){}});
+assert.equal(run('papers[0].url'),'https://example.com/new');
+run('renderSettings()');assert.doesNotMatch(node('#main').innerHTML,/Google|Drive|PDF|OAuth/);
+console.log('Citation-only imports, editable source links, and removal of PDF/Drive controls passed.');

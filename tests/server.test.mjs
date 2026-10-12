@@ -33,7 +33,7 @@ try{
   const payload={revision:0,papers:[paper],settings:{collections:['Cryptography'],clientId:'123.apps.googleusercontent.com'}};
   assert.equal((await request('/api/library',{method:'PUT',headers:{'X-CSRF-Token':'bad'},body:JSON.stringify(payload)})).status,403);
   const saved=await request('/api/library',{method:'PUT',body:JSON.stringify(payload)});assert.equal(saved.status,200);
-  const data=await saved.json();assert.equal(data.revision,1);assert.equal(data.papers[0].drivePdfId,'drive-file-1');assert.equal(data.papers[0].pdfId,undefined);
+  const data=await saved.json();assert.equal(data.revision,1);assert.equal(data.papers[0].drivePdfId,undefined);assert.equal(data.settings.clientId,undefined);assert.equal(data.papers[0].pdfId,undefined);
   const conflict=await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,papers:[]})});assert.equal(conflict.status,409);assert.equal((await conflict.json()).library.papers.length,1);
   assert.equal((await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,revision:1,papers:[{...paper,title:''}]})})).status,400);
   assert.equal((await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,revision:1,papers:[{...paper,url:'javascript:alert(1)'}]})})).status,400);

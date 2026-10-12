@@ -9,7 +9,7 @@ import { createMetadataServer } from './metadata.mjs';
 const token = () => randomBytes(32).toString('hex');
 const digest = value => createHash('sha256').update(value).digest('hex');
 export function passwordHash(password) {
-  if (password.length < 16) throw new Error('Use a password with at least 16 characters.');
+  if (typeof password !== 'string' || password.length < 16 || password.length > 1024) throw new Error('Use a password with 16–1024 characters.');
   const salt = randomBytes(16).toString('hex');
   return salt + ':' + scryptSync(password, salt, 64).toString('hex');
 }
@@ -25,47 +25,74 @@ function validate(data) {
     if (!p || typeof p.id !== 'string' || !/^[\w-]{1,100}$/.test(p.id) || ids.has(p.id) || typeof p.title !== 'string' || !p.title.trim() || p.title.length > 500) fail(400, 'Invalid paper ID or title.');
     ids.add(p.id);
     if (!['read','reading','unread'].includes(p.status) || !['high','normal','low'].includes(p.importance) || !Array.isArray(p.tags) || p.tags.length > 50 || p.tags.some(t => typeof t !== 'string' || t.length > 200)) fail(400, 'Invalid paper flags or tags.');
-    for (const [field,max] of Object.entries({authors:5000,venue:1000,notes:100000,doi:2000,url:4000,rank:100,metricType:100,metricSource:4000,pdfName:500,type:100,metadataSource:100})) {
+    for (const [field,max] of Object.entries({authors:5000,venue:1000,notes:100000,doi:2000,url:4000,rank:100,metricType:100,metricSource:4000,type:100,metadataSource:100})) {
       if (p[field] !== undefined && (typeof p[field] !== 'string' || p[field].length > max)) fail(400, 'Invalid '+field+'.');
     }
     for (const field of ['url','metricSource']) if (p[field]) {
       try { if (!['http:','https:'].includes(new URL(p[field]).protocol)) fail(400, 'Invalid URL.'); } catch { fail(400, 'Invalid URL.'); }
     }
-    if (p.drivePdfId !== undefined && !/^[\w-]{1,200}$/.test(p.drivePdfId)) fail(400, 'Invalid Drive reference.');
     for (const field of ['added','updated']) if (p[field] !== undefined && (!Number.isSafeInteger(p[field]) || p[field]<0)) fail(400, 'Invalid timestamp.');
     if (p.year !== undefined && p.year !== '' && (!Number.isInteger(p.year) || p.year<1400 || p.year>2100)) fail(400, 'Invalid publication year.');
     if (p.metricYear !== undefined && typeof p.metricYear !== 'string' && typeof p.metricYear !== 'number') fail(400, 'Invalid metric year.');
     if (p.sample !== undefined && typeof p.sample !== 'boolean') fail(400, 'Invalid sample flag.');
-    // Never persist device PDF caches or arbitrary binary properties.
-    const allowed = new Set(['id','title','authors','venue','notes','doi','url','rank','metricType','metricSource','pdfName','type','metadataSource','status','importance','tags','year','metricYear','added','updated','sample','drivePdfId']);
+    // Only persist citation metadata, flags, links, and notes.
+    const allowed = new Set(['id','title','authors','venue','notes','doi','url','rank','metricType','metricSource','pdfName','type','metadataSource','status','importance','tags','year','metricYear','added','updated','sample']);
     for (const field of Object.keys(p)) if (!allowed.has(field)) delete p[field];
   }
   const s = data.settings;
-  if (s.clientId !== undefined && (typeof s.clientId !== 'string' || !/^[\w.-]{1,250}\.apps\.googleusercontent\.com$/.test(s.clientId))) fail(400, 'Invalid Google client ID.');
   if (s.collections !== undefined && (!Array.isArray(s.collections) || s.collections.length > 1000 || s.collections.some(t => typeof t !== 'string' || t.length > 200))) fail(400, 'Invalid collections.');
-  data.settings = {collections:s.collections || [], ...(s.clientId ? {clientId:s.clientId} : {}), ...(Number.isFinite(s.lastBackup) ? {lastBackup:s.lastBackup} : {})};
+  data.settings = {collections:s.collections || []};
   return data;
 }
 
-export function createApp({origin, hash, dbPath, allowHttp = false, metadata = createMetadataServer(undefined, origin)} = {}) {
+export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp = false, metadata = createMetadataServer(undefined, origin)} = {}) {
   const publicURL = new URL(origin);
   if (publicURL.origin !== origin || (publicURL.protocol !== 'https:' && !(allowHttp && ['localhost','127.0.0.1'].includes(publicURL.hostname) && publicURL.protocol === 'http:'))) throw new Error('APP_ORIGIN must be an exact HTTPS origin (or loopback HTTP for development).');
   if (!/^[a-f0-9]{32}:[a-f0-9]{128}$/.test(hash || '')) throw new Error('Set FOLIO_PASSWORD_HASH using server/password.mjs.');
   mkdirSync(dirname(dbPath), {recursive:true, mode:0o700});
   const db = new DatabaseSync(dbPath);
-  db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
-    CREATE TABLE IF NOT EXISTS library (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, data TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, csrf TEXT NOT NULL, expires INTEGER NOT NULL);`);
-  db.prepare('INSERT OR IGNORE INTO library VALUES (1,0,?)').run(JSON.stringify({papers:[],settings:{}}));
-  const snapshot = () => { const row = db.prepare('SELECT revision,data FROM library WHERE id=1').get(); return {...JSON.parse(row.data),revision:row.revision}; };
+  db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;');
+  if (db.prepare('PRAGMA user_version').get().user_version>3) {db.close();throw new Error('This database requires a newer Folio version.');}
+  const username = value => {
+    if(typeof value!=='string')fail(400,'Enter a username.');
+    const name=value.trim().toLowerCase();
+    if(!/^[a-z0-9][a-z0-9_.-]{2,39}$/.test(name))fail(400,'Use a username of 3–40 letters, numbers, dots, underscores, or hyphens.');
+    return name;
+  };
+  ownerName=username(ownerName);
+  const transaction = action => {db.exec('BEGIN IMMEDIATE');try{const result=action();db.exec('COMMIT');return result}catch(err){db.exec('ROLLBACK');throw err}};
+  try {transaction(()=>{
+    db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','member')), enabled INTEGER NOT NULL DEFAULT 1, created INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS user_libraries (user_id INTEGER PRIMARY KEY REFERENCES users(id), revision INTEGER NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS user_sessions (id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), csrf TEXT NOT NULL, expires INTEGER NOT NULL);
+      CREATE INDEX IF NOT EXISTS sessions_by_user ON user_sessions(user_id);
+      CREATE TABLE IF NOT EXISTS invitations (id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, created_by INTEGER NOT NULL REFERENCES users(id), expires INTEGER NOT NULL, created INTEGER NOT NULL);`);
+    if(!db.prepare('SELECT id FROM users LIMIT 1').get()){
+      const legacy=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='library'").get()?db.prepare('SELECT revision,data FROM library WHERE id=1').get():null;
+      const owner=db.prepare("INSERT INTO users(username,password_hash,role,created) VALUES (?,?,'owner',?)").run(username(ownerName),hash,Date.now());
+      db.prepare('INSERT INTO user_libraries VALUES (?,?,?)').run(owner.lastInsertRowid,legacy?.revision||0,legacy?.data||JSON.stringify({papers:[],settings:{}}));
+      if(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'").get())db.exec('DELETE FROM sessions');
+    }
+    if(db.prepare('PRAGMA user_version').get().user_version<3){
+      for(const row of db.prepare('SELECT user_id,data FROM user_libraries').all()){
+        const data=JSON.parse(row.data);let changed=false;
+        for(const paper of data.papers)for(const field of ['pdfId','drivePdfId','pdfName','hasPdf','needsPdfUpload'])if(Object.hasOwn(paper,field)){delete paper[field];changed=true}
+        for(const field of ['clientId','lastBackup'])if(Object.hasOwn(data.settings,field)){delete data.settings[field];changed=true}
+        if(changed)db.prepare('UPDATE user_libraries SET data=?,revision=revision+1 WHERE user_id=?').run(JSON.stringify(data),row.user_id);
+      }
+    }
+    db.exec('PRAGMA user_version=3');
+  })}catch(err){db.close();throw err}
+  const publicUser = user => ({id:user.id,username:user.username,role:user.role});
+  const snapshot = user => { const row = db.prepare('SELECT revision,data FROM user_libraries WHERE user_id=?').get(user.id); return {...JSON.parse(row.data),revision:row.revision,user:publicUser(user)}; };
   const assets = new Map(['index.html','app.js','style.css'].map(name => [name, readFileSync(new URL('../dist/'+name, import.meta.url))]));
   const attempts = new Map();
   let loginBusy = false;
   const reply = (res,status,data) => { res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data)); };
-  const readJSON = async req => {
+  const readJSON = async (req, maxSize=16384) => {
     if (!/^application\/json\b/.test(req.headers['content-type'] || '')) fail(415,'Use JSON.');
     let size=0;const parts=[];
-    for await (const part of req) { size+=part.length; if (size>10*1024*1024) fail(413,'Library exceeds 10 MB.');parts.push(part); }
+    for await (const part of req) { size+=part.length; if (size>maxSize) fail(413,'Request exceeds the size limit.');parts.push(part); }
     try { return JSON.parse(Buffer.concat(parts)); } catch { fail(400,'Invalid JSON.'); }
   };
   const cookie = (value, age) => `folio_session=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}`+(publicURL.protocol==='https:'?'; Secure':'');
@@ -80,40 +107,104 @@ export function createApp({origin, hash, dbPath, allowHttp = false, metadata = c
       const mutating = !['GET','HEAD'].includes(req.method);
       if (mutating && req.headers.origin !== origin) fail(403,'Invalid origin.');
       if (req.headers['sec-fetch-site'] === 'cross-site') fail(403,'Use Folio directly.');
-      if (url.pathname === '/api/login' && req.method === 'POST') {
+      const issueSession = user => {
+        const id=token(),csrf=token(),now=Date.now();
+        db.prepare('DELETE FROM user_sessions WHERE expires < ?').run(now);
+        db.prepare('INSERT INTO user_sessions VALUES (?,?,?,?)').run(digest(id),user.id,csrf,now+7*86400000);
+        res.setHeader('Set-Cookie',cookie(id,7*86400));return {csrf,user:publicUser(user)};
+      };
+      if (['/api/login','/api/register'].includes(url.pathname) && req.method === 'POST') {
         const now=Date.now();
-        // Key by actual socket, never untrusted X-Forwarded-For. Behind Caddy this is a conservative shared limit.
+        // Shared proxy limit; do not trust client-supplied forwarding headers.
         for (const [key,v] of attempts) if (v.until<now) attempts.delete(key);
         const key=req.socket.remoteAddress;
         const limit=attempts.get(key) || {count:0,until:now+15*60*1000};
-        if (loginBusy || limit.count>=10) fail(429,'Too many login attempts. Try again in 15 minutes.');
-        limit.count++;attempts.set(key,limit);
-        loginBusy=true;
+        if (loginBusy || limit.count>=10) fail(429,'Too many sign-in attempts. Try again in 15 minutes.');
+        limit.count++;attempts.set(key,limit);loginBusy=true;
         try {
           const data=await readJSON(req);
-          if (typeof data.password !== 'string' || data.password.length>1024 || !checkPassword(data.password,hash)) fail(401,'Incorrect password.');
-          const id=token(),csrf=token(),expires=now+7*86400000;
-          db.prepare('DELETE FROM sessions WHERE expires < ?').run(now);
-          db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(digest(id),csrf,expires);
-          attempts.delete(key);
-          res.setHeader('Set-Cookie',cookie(id,7*86400));reply(res,200,{csrf});
+          if(!data||typeof data!=='object')fail(400,'Invalid account details.');
+          if (url.pathname==='/api/register'){
+            const name=username(data.username);
+            if(typeof data.invitation!=='string'||! /^[a-f0-9]{64}$/.test(data.invitation))fail(400,'A valid invitation is required.');
+            const invite=db.prepare('SELECT * FROM invitations WHERE token_hash=? AND expires>?').get(digest(data.invitation),now);
+            if(!invite)fail(400,'This invitation is invalid, expired, or revoked.');
+            if(db.prepare('SELECT id FROM users WHERE username=?').get(name))fail(409,'This username is already taken.');
+            if(db.prepare('SELECT count(*) AS n FROM users').get().n>=1000)fail(409,'The server account limit has been reached.');
+            let newHash;try{newHash=passwordHash(data.password)}catch(err){fail(400,err.message)}
+            const user=transaction(()=>{
+              if(!db.prepare('SELECT id FROM invitations WHERE id=? AND expires>?').get(invite.id,Date.now()))fail(400,'This invitation is no longer valid.');
+              const result=db.prepare("INSERT INTO users(username,password_hash,role,created) VALUES (?,?,'member',?)").run(name,newHash,now);
+              db.prepare('INSERT INTO user_libraries VALUES (?,0,?)').run(result.lastInsertRowid,JSON.stringify({papers:[],settings:{}}));
+              return db.prepare('SELECT * FROM users WHERE id=?').get(result.lastInsertRowid);
+            });
+            attempts.delete(key);reply(res,201,issueSession(user));return;
+          }
+          const name=typeof data.username==='string'?data.username.trim().toLowerCase():ownerName;
+          const user=db.prepare('SELECT * FROM users WHERE username=? AND enabled=1').get(name);
+          // Dummy check keeps an unknown username on the same password-check path.
+          const correct=typeof data.password==='string'&&data.password.length<=1024&&checkPassword(data.password,user?.password_hash||hash);
+          if(!user||!correct)fail(401,'Incorrect username or password.');
+          attempts.delete(key);reply(res,200,issueSession(user));
         } finally { loginBusy=false; }
         return;
       }
       const raw=req.headers.cookie?.match(/(?:^|;\s*)folio_session=([a-f0-9]{64})(?:;|$)/)?.[1];
-      const session=raw ? db.prepare('SELECT * FROM sessions WHERE id=? AND expires>?').get(digest(raw),Date.now()) : null;
+      const session=raw ? db.prepare('SELECT s.* FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires>? AND u.enabled=1').get(digest(raw),Date.now()) : null;
       if (url.pathname.startsWith('/api/')) {
         if (!session) fail(401,'Sign in to your library.');
+        const user=db.prepare('SELECT * FROM users WHERE id=?').get(session.user_id);
+        if(req.headers['x-folio-user']&&req.headers['x-folio-user']!==String(user.id)){reply(res,409,{error:'The signed-in account changed. Sign in again to continue.',accountChanged:true});return;}
         if (mutating && req.headers['x-csrf-token'] !== session.csrf) fail(403,'Invalid session token.');
-        if (url.pathname === '/api/session' && req.method === 'GET') { reply(res,200,{csrf:session.csrf});return; }
-        if (url.pathname === '/api/logout' && req.method === 'POST') { db.prepare('DELETE FROM sessions WHERE id=?').run(session.id);res.setHeader('Set-Cookie',cookie('',0));reply(res,200,{ok:true});return; }
-        if (url.pathname === '/api/library' && req.method === 'GET') { reply(res,200,snapshot());return; }
+        if (url.pathname === '/api/session' && req.method === 'GET') { reply(res,200,{csrf:session.csrf,user:publicUser(user)});return; }
+        if (url.pathname === '/api/logout' && req.method === 'POST') { db.prepare('DELETE FROM user_sessions WHERE id=?').run(session.id);res.setHeader('Set-Cookie',cookie('',0));reply(res,200,{ok:true});return; }
+        if (url.pathname === '/api/library' && req.method === 'GET') { reply(res,200,snapshot(user));return; }
         if (url.pathname === '/api/library' && req.method === 'PUT') {
-          const data=validate(await readJSON(req));
+          const data=validate(await readJSON(req,10*1024*1024));
           if (!Number.isSafeInteger(data.revision) || data.revision<0) fail(400,'Invalid revision.');
-          const result=db.prepare('UPDATE library SET data=?,revision=revision+1 WHERE id=1 AND revision=?').run(JSON.stringify({papers:data.papers,settings:data.settings}),data.revision);
-          if (!result.changes) { reply(res,409,{error:'Your library changed on another device. The latest library was loaded; review and retry your edit.',library:snapshot()});return; }
-          reply(res,200,snapshot());return;
+          const result=db.prepare('UPDATE user_libraries SET data=?,revision=revision+1 WHERE user_id=? AND revision=?').run(JSON.stringify({papers:data.papers,settings:data.settings}),user.id,data.revision);
+          if (!result.changes) { reply(res,409,{error:'Your library changed on another device. The latest library was loaded; review and retry your edit.',library:snapshot(user)});return; }
+          reply(res,200,snapshot(user));return;
+        }
+        if(url.pathname==='/api/password'&&req.method==='POST'){
+          const now=Date.now(),key='password:'+user.id;
+          const limit=attempts.get(key)||{count:0,until:now+15*60*1000};
+          if(limit.until<now){limit.count=0;limit.until=now+15*60*1000}
+          if(limit.count>=10)fail(429,'Too many password attempts. Try again in 15 minutes.');
+          limit.count++;attempts.set(key,limit);
+          const data=await readJSON(req);
+          if(!data||typeof data!=='object')fail(400,'Invalid password details.');
+          if(typeof data.currentPassword!=='string'||data.currentPassword.length>1024||!checkPassword(data.currentPassword,user.password_hash))fail(401,'Incorrect current password.');
+          let newHash;try{newHash=passwordHash(data.password)}catch(err){fail(400,err.message)}
+          transaction(()=>{db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(newHash,user.id);db.prepare('DELETE FROM user_sessions WHERE user_id=?').run(user.id)});
+          attempts.delete(key);reply(res,200,issueSession(user));return;
+        }
+        if(url.pathname.startsWith('/api/admin/')){
+          if(user.role!=='owner')fail(403,'Only the owner can manage accounts.');
+          if(url.pathname==='/api/admin/users'&&req.method==='GET'){
+            reply(res,200,{users:db.prepare('SELECT id,username,role,enabled,created FROM users ORDER BY id').all()});return;
+          }
+          if(url.pathname==='/api/admin/invitations'&&req.method==='GET'){
+            reply(res,200,{invitations:db.prepare('SELECT id,created,expires FROM invitations WHERE expires>? ORDER BY created DESC').all(Date.now())});return;
+          }
+          if(url.pathname==='/api/admin/invitations'&&req.method==='POST'){
+            const now=Date.now();db.prepare('DELETE FROM invitations WHERE expires<=?').run(now);
+            if(db.prepare('SELECT count(*) AS n FROM invitations').get().n>=50)fail(409,'Revoke an invitation before creating another.');
+            const secret=token(),id=token(),expires=now+7*86400000;
+            db.prepare('INSERT INTO invitations VALUES (?,?,?,?,?)').run(id,digest(secret),user.id,expires,now);
+            reply(res,201,{id,expires,url:origin+'/#invite='+secret});return;
+          }
+          const inviteID=url.pathname.match(/^\/api\/admin\/invitations\/([a-f0-9]{64})$/)?.[1];
+          if(inviteID&&req.method==='DELETE') {db.prepare('DELETE FROM invitations WHERE id=?').run(inviteID);reply(res,200,{ok:true});return;}
+          const accountID=url.pathname.match(/^\/api\/admin\/users\/([1-9]\d*)$/)?.[1];
+          if(accountID&&req.method==='PATCH'){
+            const data=await readJSON(req);if(typeof data.enabled!=='boolean')fail(400,'Specify whether the account is enabled.');
+            const target=db.prepare('SELECT * FROM users WHERE id=?').get(accountID);
+            if(!target)fail(404,'Account not found.');if(target.role==='owner')fail(400,'The owner account cannot be disabled.');
+            transaction(()=>{db.prepare('UPDATE users SET enabled=? WHERE id=?').run(Number(data.enabled),target.id);db.prepare('DELETE FROM user_sessions WHERE user_id=?').run(target.id)});
+            reply(res,200,{ok:true});return;
+          }
+          fail(404,'Not found.');
         }
         if (['/api/tches','/api/eprint'].includes(url.pathname) && req.method === 'GET') {
           // Reuse the constrained publisher lookup without starting another listener.
@@ -138,7 +229,7 @@ export function createApp({origin, hash, dbPath, allowHttp = false, metadata = c
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.umask(0o077);
-  const server=createApp({origin:process.env.APP_ORIGIN,hash:process.env.FOLIO_PASSWORD_HASH,dbPath:process.env.DB_PATH || './.runtime/folio.sqlite',allowHttp:process.env.ALLOW_LOCAL_HTTP==='1'});
+  const server=createApp({origin:process.env.APP_ORIGIN,hash:process.env.FOLIO_PASSWORD_HASH,ownerName:process.env.FOLIO_OWNER_USERNAME || 'owner',dbPath:process.env.DB_PATH || './.runtime/folio.sqlite',allowHttp:process.env.ALLOW_LOCAL_HTTP==='1'});
   server.listen(Number(process.env.PORT || 3000),process.env.BIND || '127.0.0.1',()=>console.log('Folio server ready.'));
   for (const signal of ['SIGTERM','SIGINT']) process.on(signal,()=>server.close());
 }
