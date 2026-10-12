@@ -115,3 +115,67 @@ assert.equal(run('papers.length'),1);
 assert.equal(run('papers[0].id'),'a');
 assert.equal(JSON.parse(memory.get('folio-library-v1')).length,1);
 console.log('Passed: filtering, citations, URL safety, backup validation, merge conflict preservation, and single-paper deletion.');
+
+// The phone screen uses the same paper filters and switches back on wider screens.
+let viewportChanged;
+const media={matches:true,addEventListener(type,fn){viewportChanged=fn}};
+const phoneContext=vm.createContext({...context,window:{matchMedia:()=>media,addEventListener(){}},localStorage:{getItem:()=>null,setItem(){}},location:{hash:'',origin:'http://localhost'}});
+vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8'),phoneContext);
+const phone=s=>vm.runInContext(s,phoneContext);
+assert.match(node('#main').innerHTML,/Your reading shelf/);
+assert.equal(phone('filtered().length'),8);
+phone("navigate('queue')");
+assert.equal(phone('filtered().length'),5);
+assert.match(node('#main').innerHTML,/Important first/);
+node('#search').value='plonk';node('#search').oninput({target:node('#search')});
+assert.equal(phone('filtered().length'),1);
+assert.match(node('#paper-results').innerHTML,/PLONK/);
+phone("navigate('library','Lattices')");
+assert.equal(phone('filtered().length'),2);
+media.matches=false;viewportChanged();
+assert.match(node('#main').innerHTML,/heading-actions/);
+assert.equal(phone('collection'),'Lattices');
+assert.equal(phone('filtered().length'),2);
+console.log('Passed: phone library, unread navigation, search, collections, and viewport switching.');
+
+// Desktop tag clicks preserve other filters and can clear the collection.
+phone("navigate('library');statusFilter='unread';priorityFilter='high';query='goldreich';render()");
+assert.match(node('#main').innerHTML,/Collections & tags/);
+const tagClick=tag=>phone(`document.click({target:{closest:()=>({dataset:{filterTag:${JSON.stringify(tag)}},id:'',hasAttribute:name=>name==='data-filter-tag'})}})`);
+await tagClick('Foundations');
+assert.equal(phone('collection'),'Foundations');
+assert.equal(phone('statusFilter'),'unread');
+assert.equal(phone('priorityFilter'),'high');
+assert.equal(phone('query'),'goldreich');
+assert.equal(phone('filtered().length'),1);
+assert.match(node('#paper-results').innerHTML,/Goldreich/);
+assert.equal(node('#result-count').textContent,'1 paper');
+await tagClick('Lattices');
+assert.equal(phone('filtered().length'),0);
+await tagClick('');
+assert.equal(phone('collection'),'');
+assert.equal(phone('filtered().length'),1);
+console.log('Passed: desktop collection selection, combined filters, and clear collection.');
+
+// ePrint URL recognition and the actual lookup/save flow.
+assert.equal(run("getEprintId('https://eprint.iacr.org/2006/139')"),'2006/139');
+assert.equal(run("getEprintId('eprint.iacr.org/2006/139.pdf')"),'2006/139');
+assert.equal(run("getEprintId('https://ia.cr/2006/139?from=search')"),'2006/139');
+for(const url of ['https://eprint.iacr.org.evil.test/2006/139','https://user@eprint.iacr.org/2006/139','https://eprint.iacr.org/2006/0','https://eprint.iacr.org/2006/139/extra'])assert.equal(run('getEprintId('+JSON.stringify(url)+')'),'');
+const eprint={title:'A Unified Framework for the Analysis of Side-Channel Key Recovery Attacks (extended version)',authors:'Francois-Xavier Standaert; Tal G. Malkin; Moti Yung',year:2006,venue:'Cryptology ePrint Archive',doi:'',url:'https://eprint.iacr.org/2006/139',type:'posted-content',metadataSource:'IACR ePrint'};
+context.fetch=async url=>{assert.equal(url,'/api/eprint?id=2006%2F139');return {ok:true,json:async()=>eprint}};
+run("papers=[];selectedFile=null;addMode='url'");
+node('#paper-url').value='https://eprint.iacr.org/2006/139';
+await run('lookupMetadata()');
+assert.equal(node('#paper-title').value,eprint.title);
+assert.equal(node('#paper-year').value,2006);
+node('#paper-status').value='unread';node('#paper-priority').value='normal';node('#paper-tags').value='Side channels';
+await run('submitAdd({preventDefault(){}})');
+assert.equal(run('papers.length'),1);
+assert.equal(run('papers[0].metadataSource'),'IACR ePrint');
+assert.match(run("citation(papers[0],'bibtex')"),/^@misc/);
+assert.match(run("citation(papers[0],'bibtex')"),/howpublished = \{Cryptology ePrint Archive\}/);
+node('#paper-url').value='https://ia.cr/2006/139';
+await run('submitAdd({preventDefault(){}})');
+assert.equal(run('papers.length'),1);assert.match(node('#add-error').textContent,/already in your library/);
+console.log('Passed: ePrint page/PDF/short URLs, metadata lookup/save, preprint BibTeX, and duplicate protection.');

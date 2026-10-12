@@ -1,0 +1,4 @@
+{$FOLIO_DOMAIN} {
+	encode gzip
+	reverse_proxy folio:3000
+}

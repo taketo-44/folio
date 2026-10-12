@@ -1,15 +1,22 @@
 # Folio
 
-A personal paper reading and citation app. Buildless HTML, CSS, and JavaScript; no build step or third-party JavaScript packages. The Windows host starts a localhost-only Node.js service for TCHES citation lookup.
+## Remote server + Google Drive
+
+For source control and deployments, use the [Git workflow](REMOTE-SETUP.md#git-workflow). Edit and test on your Mac, push to GitHub, then run `bash deploy/update.sh` in the VPS Git checkout. GitHub Actions runs the tests on pushes and pull requests to `main`.
+
+For temporary access before choosing a domain, see [TUNNEL-SETUP.md](TUNNEL-SETUP.md). It includes a saved SSH connection and loopback-only Docker deployment.
+
+See [REMOTE-SETUP.md](REMOTE-SETUP.md) for the new password-protected Node/SQLite server and Docker Compose deployment. Citations and reading data are shared across devices; optional uploaded PDFs go directly to Google Drive. This is a personal, single-library deployment. The static and Windows modes described below still use browser storage.
+
+A personal paper reading and citation app. Buildless HTML, CSS, and JavaScript; no build step or third-party JavaScript packages. Remote mode requires Node 24. The Windows host starts a localhost-only Node.js service for TCHES citation lookup.
 
 ## Run locally
 
 ```sh
-cd dist
-python3 -m http.server 4173 --bind 127.0.0.1
+node server/preview.mjs
 ```
 
-Open http://127.0.0.1:4173. Use an HTTP server rather than opening the HTML directly.
+Open http://127.0.0.1:4173. This loopback-only preview serves the UI and publisher citation lookup. Use Node 24; opening HTML directly or a plain static server does not provide publisher lookup.
 
 ## Windows local-network and VPN hosting
 
@@ -17,8 +24,10 @@ See [WINDOWS-SETUP.md](WINDOWS-SETUP.md) for private HTTPS hosting on a Windows 
 
 ## Features
 
-- Paper URLs, Springer chapter and DOI lookup through Crossref, TCHES article metadata lookup, manual citations, and PDF uploads up to 50 MB.
-- Search, collections, read/unread/reading status, three importance levels, notes, grid and list views.
+- A dedicated phone layout at viewport widths up to 600 px: bottom navigation, a compact reading overview, collection chips, collapsible filters, and touch-friendly dialogs. Wider screens retain the desktop library.
+
+- Paper URLs, IACR ePrint metadata lookup (including PDF and ia.cr links), Springer chapter and DOI lookup through Crossref, TCHES article metadata lookup, manual citations, and PDF uploads up to 50 MB.
+- Search, collections, read/unread/reading status, three importance levels, notes, grid and list views. The desktop library lists all collection/tag filters with counts and combines tag selection with search, status, and importance filters.
 - An unread reading queue with priority-aware and random selection.
 - On-demand scholarly discovery through Crossref, excluding saved papers by DOI and title.
 - BibTeX, RIS, and plain-text citation export.
@@ -34,7 +43,7 @@ Connection, backup, and restore are explicit user actions. Tokens stay in memory
 
 ## Storage and limitations
 
-The library lives in localStorage and PDFs in IndexedDB for the current origin. Browser data removal can erase local data. JSON exports include metadata and notes only; Drive backups include PDFs. Google authorization requires a configured client ID and has not been verified without one. Public scholarly API access depends on network availability and provider limits. Paste a Springer chapter URL, TCHES article URL, or DOI in Add paper, click Look up metadata, review the filled details, and save. Arbitrary URLs can still be saved with manual metadata. TCHES lookup requires the metadata service included in Windows hosting; a static-only host supports Springer/DOI lookup and manual TCHES entry. The app starts with a removable sample cryptography library.
+The library lives in localStorage and PDFs in IndexedDB for the current origin. Browser data removal can erase local data. JSON exports include metadata and notes only; Drive backups include PDFs. Google authorization requires a configured client ID and has not been verified without one. Public scholarly API access depends on network availability and provider limits. Paste an IACR ePrint URL, Springer chapter URL, TCHES article URL, or DOI in Add paper, click Look up metadata, review the filled details, and save. Arbitrary URLs can still be saved with manual metadata. Publisher HTML lookup requires the Node server/preview API; a static-only host supports Springer/DOI lookup and manual citations. ePrint lookup uses the archive’s citation year and venue, even when the page mentions a later conference publication. The app starts with a removable sample cryptography library.
 
 Conference rank and journal impact factor values require a recorded source and year. There is no licensed Journal Citation Reports integration. Recommendations are topic searches derived from important paper tags, rather than a trained recommendation model.
 

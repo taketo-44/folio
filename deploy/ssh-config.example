@@ -1,0 +1,13 @@
+# Add these entries near the top of your Mac's ~/.ssh/config.
+# Replace YOUR_SERVER_IP with your Sakura VPS public IPv4 address.
+Host folio-web
+    LocalForward 127.0.0.1:3000 127.0.0.1:3000
+    ExitOnForwardFailure yes
+
+Host folio folio-web
+    HostName YOUR_SERVER_IP
+    User ubuntu
+    IdentityFile ~/.ssh/folio_sakura
+    IdentitiesOnly yes
+    ServerAliveInterval 30
+    ServerAliveCountMax 3

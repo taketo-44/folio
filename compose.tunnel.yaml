@@ -1,0 +1,16 @@
+# Standalone temporary deployment: access through an SSH local forward.
+# Use the same Compose project name (folio) when switching to compose.yaml.
+services:
+  folio:
+    build: .
+    restart: unless-stopped
+    environment:
+      APP_ORIGIN: http://127.0.0.1:3000
+      ALLOW_LOCAL_HTTP: "1"
+      FOLIO_PASSWORD_HASH: ${FOLIO_PASSWORD_HASH:?Set a password hash in .env}
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - folio_data:/data
+volumes:
+  folio_data:

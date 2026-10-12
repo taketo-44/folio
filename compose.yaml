@@ -1,0 +1,28 @@
+services:
+  folio:
+    build: .
+    restart: unless-stopped
+    environment:
+      APP_ORIGIN: https://${FOLIO_DOMAIN:?Set FOLIO_DOMAIN in .env}
+      FOLIO_PASSWORD_HASH: ${FOLIO_PASSWORD_HASH:?Set a password hash in .env}
+    volumes:
+      - folio_data:/data
+    # Only Caddy can reach this port; it is not published on the host.
+    expose:
+      - "3000"
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      FOLIO_DOMAIN: ${FOLIO_DOMAIN:?Set FOLIO_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  folio_data:
+  caddy_data:
+  caddy_config:

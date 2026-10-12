@@ -11,7 +11,7 @@ function decodeEntities(value) {
   });
 }
 
-export function parseCitation(html, id) {
+export function parseCitation(html, id, source = 'tches') {
   const fields = new Map();
   for (const tag of html.match(/<meta\b(?:"[^"]*"|'[^']*'|[^'">])*>/gi) || []) {
     const attrs = {};
@@ -26,28 +26,31 @@ export function parseCitation(html, id) {
   }
   const first = name => fields.get(name)?.[0] || '';
   const title = first('citation_title').slice(0,500);
-  if (!title) throw new Error('TCHES did not return citation details. Enter them manually or use the DOI.');
+  if (!title) throw new Error((source==='eprint'?'IACR ePrint':'TCHES')+' did not return citation details. Enter them manually or use the DOI.');
   const doi = first('citation_doi');
   return {
     title, authors:(fields.get('citation_author') || []).slice(0,100).join('; ').slice(0,5000),
     year:Number((first('citation_date') || first('citation_publication_date')).match(/\b\d{4}\b/)?.[0]) || '',
     venue:first('citation_journal_title').slice(0,1000),
     doi:/^10\.\d{4,9}\/\S{1,2000}$/i.test(doi) ? doi : '',
-    url:'https://tches.iacr.org/index.php/TCHES/article/view/'+id,
-    metadataSource:'TCHES', type:'journal-article'
+    url:source==='eprint'?'https://eprint.iacr.org/'+id:'https://tches.iacr.org/index.php/TCHES/article/view/'+id,
+    metadataSource:source==='eprint'?'IACR ePrint':'TCHES', type:source==='eprint'?'posted-content':'journal-article'
   };
 }
 
-export function fetchArticle(id) {
+export function fetchArticle(id, source = 'tches') {
+  const valid=source==='eprint'?/^(?:19|20)\d{2}\/[1-9]\d{0,9}$/.test(id):source==='tches'&&/^[1-9]\d{0,9}$/.test(id);
+  if(!valid)return Promise.reject(new Error('Invalid publisher paper identifier.'));
+  const url=source==='eprint'?'https://eprint.iacr.org/'+id:'https://tches.iacr.org/index.php/TCHES/article/view/'+id;
   return new Promise((resolve,reject) => {
     // The only upstream is this fixed HTTPS publisher path. Never follow redirects.
-    const req = https.get('https://tches.iacr.org/index.php/TCHES/article/view/'+id, {
+    const req = https.get(url, {
       signal:AbortSignal.timeout(15000),
       headers:{'User-Agent':'Folio/1.0 (personal citation lookup)', Accept:'text/html', 'Accept-Encoding':'identity'}
     }, res => {
       if (res.statusCode !== 200 || !/^text\/html\b/i.test(res.headers['content-type'] || '')) {
         res.resume();
-        reject(new Error('TCHES is unavailable. Try again or enter the citation manually.'));
+        reject(new Error('Publisher is unavailable. Try again or enter the citation manually.'));
         return;
       }
       const chunks = [];
@@ -64,7 +67,7 @@ export function fetchArticle(id) {
   });
 }
 
-export function createMetadataServer(loadArticle = fetchArticle) {
+export function createMetadataServer(loadArticle = fetchArticle, allowedOrigin) {
   const cache = new Map(), pending = new Map();
   let windowStart = Date.now(), lookups = 0;
   const reply = (res, status, data) => {
@@ -74,35 +77,38 @@ export function createMetadataServer(loadArticle = fetchArticle) {
   const server = http.createServer({maxHeaderSize:8192,requestTimeout:20000,headersTimeout:10000,keepAliveTimeout:3000}, async (req,res) => {
     try {
       if (req.method !== 'GET') { res.setHeader('Connection','close'); reply(res,405,{error:'Use GET.'}); return; }
-      if (req.headers['sec-fetch-site'] === 'cross-site' || (req.headers.origin && req.headers.origin !== 'https://'+req.headers.host)) {
+      if (req.headers['sec-fetch-site'] === 'cross-site' || (req.headers.origin && req.headers.origin !== (allowedOrigin || 'https://'+req.headers.host))) {
         reply(res,403,{error:'Use the lookup from Folio.'}); return;
       }
       const url = new URL(req.url,'http://localhost');
       if (url.pathname === '/api/health' && !url.search) { reply(res,200,{service:'folio-metadata'}); return; }
       const id = url.searchParams.get('id');
-      if (url.pathname !== '/api/tches') { reply(res,404,{error:'Not found.'}); return; }
-      if (!/^[1-9]\d{0,9}$/.test(id || '') || [...url.searchParams.keys()].some(k=>k!=='id') || url.searchParams.getAll('id').length!==1) {
-        reply(res,400,{error:'Enter a valid TCHES article link.'}); return;
+      if (!['/api/tches','/api/eprint'].includes(url.pathname)) { reply(res,404,{error:'Not found.'}); return; }
+      const source=url.pathname==='/api/eprint'?'eprint':'tches';
+      const valid=source==='eprint'?/^(?:19|20)\d{2}\/[1-9]\d{0,9}$/.test(id || ''):/^[1-9]\d{0,9}$/.test(id || '');
+      if (!valid || [...url.searchParams.keys()].some(k=>k!=='id') || url.searchParams.getAll('id').length!==1) {
+        reply(res,400,{error:'Enter a valid '+(source==='eprint'?'IACR ePrint paper':'TCHES article')+' link.'}); return;
       }
-      const cached = cache.get(id);
+      const cacheKey=source+':'+id;
+      const cached = cache.get(cacheKey);
       if (cached && cached.expires > Date.now()) { reply(res,200,cached.data); return; }
-      if (!pending.has(id)) {
+      if (!pending.has(cacheKey)) {
         if (Date.now()-windowStart >= 60000) { windowStart=Date.now(); lookups=0; }
         if (lookups>=20 || pending.size>=2) { reply(res,429,{error:'Too many lookups. Try again shortly.'}); return; }
         lookups++;
         const work = (async () => {
-          const data = parseCitation(await loadArticle(id),id);
+          const data = parseCitation(await loadArticle(id,source),id,source);
           if (cache.size>=128) cache.delete(cache.keys().next().value);
-          cache.set(id,{data,expires:Date.now()+6*60*60*1000});
+          cache.set(cacheKey,{data,expires:Date.now()+6*60*60*1000});
           return data;
         })();
-        pending.set(id,work);
+        pending.set(cacheKey,work);
       }
-      const work = pending.get(id);
+      const work = pending.get(cacheKey);
       try { reply(res,200,await work); }
-      finally { if (pending.get(id)===work) pending.delete(id); }
+      finally { if (pending.get(cacheKey)===work) pending.delete(cacheKey); }
     } catch {
-      reply(res,502,{error:'TCHES lookup failed. Try again, paste the DOI, or enter details manually.'});
+      reply(res,502,{error:'Publisher lookup failed. Try again, paste the DOI, or enter details manually.'});
     }
   });
   server.maxConnections=16;
