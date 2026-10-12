@@ -1,0 +1,112 @@
+{
+  "DOI": "10.1145/3658644.3690339",
+  "title": [
+    "The Insecurity of Masked Comparisons: SCAs on ML-KEM's FO-Transform"
+  ],
+  "author": [
+    {
+      "ORCID": "https://orcid.org/0000-0002-1649-4231",
+      "authenticated-orcid": false,
+      "given": "Julius",
+      "family": "Hermelink",
+      "sequence": "first",
+      "affiliation": [
+        {
+          "name": "Max Planck Institute for Security and Privacy, Bochum, Germany"
+        }
+      ],
+      "role": [
+        {
+          "vocabulary": "crossref",
+          "role": "author"
+        }
+      ]
+    },
+    {
+      "ORCID": "https://orcid.org/0009-0005-0638-0299",
+      "authenticated-orcid": false,
+      "given": "Kai-Chun",
+      "family": "Ning",
+      "sequence": "additional",
+      "affiliation": [
+        {
+          "name": "Max Planck Institute for Security and Privacy, Bochum, Germany"
+        }
+      ],
+      "role": [
+        {
+          "vocabulary": "crossref",
+          "role": "author"
+        }
+      ]
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0003-0972-1544",
+      "authenticated-orcid": false,
+      "given": "Richard",
+      "family": "Petri",
+      "sequence": "additional",
+      "affiliation": [
+        {
+          "name": "Max Planck Institute for Security and Privacy, Bochum, Germany"
+        }
+      ],
+      "role": [
+        {
+          "vocabulary": "crossref",
+          "role": "author"
+        }
+      ]
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0003-0204-3234",
+      "authenticated-orcid": false,
+      "given": "Emanuele",
+      "family": "Strieder",
+      "sequence": "additional",
+      "affiliation": [
+        {
+          "name": "Fraunhofer AISEC &amp; Technical University of Munich, Garching, Germany"
+        }
+      ],
+      "role": [
+        {
+          "vocabulary": "crossref",
+          "role": "author"
+        }
+      ]
+    }
+  ],
+  "published": {
+    "date-parts": [
+      [
+        2024,
+        12,
+        2
+      ]
+    ]
+  },
+  "issued": {
+    "date-parts": [
+      [
+        2024,
+        12,
+        2
+      ]
+    ]
+  },
+  "container-title": [
+    "Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security"
+  ],
+  "short-container-title": [],
+  "event": {
+    "name": "CCS '24: ACM SIGSAC Conference on Computer and Communications Security",
+    "location": "Salt Lake City UT USA",
+    "acronym": "CCS '24",
+    "sponsor": [
+      "SIGSAC ACM Special Interest Group on Security, Audit, and Control"
+    ]
+  },
+  "type": "proceedings-article",
+  "URL": "https://doi.org/10.1145/3658644.3690339"
+}

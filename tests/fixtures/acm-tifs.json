@@ -1,0 +1,114 @@
+{
+  "DOI": "10.1109/tifs.2020.3045904",
+  "title": [
+    "On the Security of Lattice-Based Fiat-Shamir Signatures in the Presence of Randomness Leakage"
+  ],
+  "author": [
+    {
+      "ORCID": "https://orcid.org/0000-0002-3821-4050",
+      "authenticated-orcid": false,
+      "given": "Yuejun",
+      "family": "Liu",
+      "sequence": "first",
+      "affiliation": [],
+      "role": [
+        {
+          "vocabulary": "crossref",
+          "role": "author"
+        }
+      ]
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0002-1337-0655",
+      "authenticated-orcid": false,
+      "given": "Yongbin",
+      "family": "Zhou",
+      "sequence": "additional",
+      "affiliation": [],
+      "role": [
+        {
+          "vocabulary": "crossref",
+          "role": "author"
+        }
+      ]
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0002-0636-9453",
+      "authenticated-orcid": false,
+      "given": "Shuo",
+      "family": "Sun",
+      "sequence": "additional",
+      "affiliation": [],
+      "role": [
+        {
+          "vocabulary": "crossref",
+          "role": "author"
+        }
+      ]
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0001-9803-1339",
+      "authenticated-orcid": false,
+      "given": "Tianyu",
+      "family": "Wang",
+      "sequence": "additional",
+      "affiliation": [],
+      "role": [
+        {
+          "vocabulary": "crossref",
+          "role": "author"
+        }
+      ]
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0002-4221-1311",
+      "authenticated-orcid": false,
+      "given": "Rui",
+      "family": "Zhang",
+      "sequence": "additional",
+      "affiliation": [],
+      "role": [
+        {
+          "vocabulary": "crossref",
+          "role": "author"
+        }
+      ]
+    },
+    {
+      "ORCID": "https://orcid.org/0000-0001-8791-1576",
+      "authenticated-orcid": false,
+      "given": "Jingdian",
+      "family": "Ming",
+      "sequence": "additional",
+      "affiliation": [],
+      "role": [
+        {
+          "vocabulary": "crossref",
+          "role": "author"
+        }
+      ]
+    }
+  ],
+  "published": {
+    "date-parts": [
+      [
+        2021
+      ]
+    ]
+  },
+  "issued": {
+    "date-parts": [
+      [
+        2021
+      ]
+    ]
+  },
+  "container-title": [
+    "IEEE Transactions on Information Forensics and Security"
+  ],
+  "short-container-title": [
+    "IEEE Trans.Inform.Forensic Secur."
+  ],
+  "type": "journal-article",
+  "URL": "https://doi.org/10.1109/tifs.2020.3045904"
+}

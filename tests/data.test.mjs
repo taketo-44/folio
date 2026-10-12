@@ -5,7 +5,7 @@ import { webcrypto } from 'node:crypto';
 
 const nodes = new Map();
 function node(selector) {
-  if (!nodes.has(selector)) nodes.set(selector, {value:'',innerHTML:'',textContent:'',dataset:{},classList:{toggle(){},add(){},remove(){}},addEventListener(){},showModal(){this.open=true},close(){this.open=false},getBoundingClientRect(){return {left:0,right:100,top:0,bottom:100}}});
+  if (!nodes.has(selector)) nodes.set(selector, {value:'',innerHTML:'',textContent:'',dataset:{},classList:{toggle(){},add(){},remove(){}},addEventListener(){},scrollIntoView(){},showModal(){this.open=true},close(){this.open=false},getBoundingClientRect(){return {left:0,right:100,top:0,bottom:100}}});
   return nodes.get(selector);
 }
 const memory = new Map();
@@ -179,3 +179,95 @@ node('#paper-url').value='https://ia.cr/2006/139';
 await run('submitAdd({preventDefault(){}})');
 assert.equal(run('papers.length'),1);assert.match(node('#add-error').textContent,/already in your library/);
 console.log('Passed: ePrint page/PDF/short URLs, metadata lookup/save, preprint BibTeX, and duplicate protection.');
+
+// Collection suggestions work with multiple comma-separated tags and keyboard selection.
+run("papers=[{tags:['Cryptography','Zero knowledge','<script>']}];settings.collections=['Crypto protocols','Empty collection','cryptography']");
+assert.deepEqual(Array.from(run("parseTags('CRYPTOGRAPHY, cryptography, New topic, new topic')")),['cryptography','New topic']);
+run("addMode='manual';renderAdd()");
+assert.match(node('#modal-content').innerHTML,/role="combobox"/);
+const tagInput=node('#paper-tags'),suggestions=node('#paper-tags-suggestions');
+tagInput.setAttribute=function(k,v){this[k]=v};
+tagInput.removeAttribute=function(k){delete this[k]};
+tagInput.focus=()=>{};
+tagInput.setSelectionRange=function(a,b){this.selectionStart=a;this.selectionEnd=b};
+tagInput.value='cr';tagInput.selectionStart=2;tagInput.oninput();
+assert.match(suggestions.innerHTML,/cryptography/);
+assert.match(suggestions.innerHTML,/Crypto protocols/);
+assert.doesNotMatch(suggestions.innerHTML,/Zero knowledge/);
+let prevented=false;
+tagInput.onkeydown({key:'ArrowDown',preventDefault(){prevented=true}});
+assert.equal(prevented,true);
+tagInput.onkeydown({key:'Enter',preventDefault(){}});
+assert.equal(tagInput.value,'Crypto protocols, ');
+assert.equal(suggestions.hidden,true);
+tagInput.value='cryptography, ze';tagInput.selectionStart=tagInput.value.length;tagInput.oninput();
+assert.match(suggestions.innerHTML,/Zero knowledge/);
+assert.doesNotMatch(suggestions.innerHTML,/cryptography/);
+suggestions.onclick({target:{closest(){return {dataset:{tagIndex:'0'}}}}});
+assert.equal(tagInput.value,'cryptography, Zero knowledge, ');
+// Editing an earlier token preserves later tags.
+tagInput.value='cr, Zero knowledge';tagInput.selectionStart=2;tagInput.oninput();
+tagInput.onkeydown({key:'Enter',preventDefault(){}});
+assert.equal(tagInput.value,'Crypto protocols, Zero knowledge');
+tagInput.value='';tagInput.selectionStart=0;tagInput.onfocus();
+assert.match(suggestions.innerHTML,/Empty collection/);
+assert.match(suggestions.innerHTML,/&lt;script&gt;/);
+tagInput.onkeydown({key:'Escape',preventDefault(){},stopPropagation(){}});
+assert.equal(suggestions.hidden,true);
+tagInput.value='Brand new topic';tagInput.selectionStart=tagInput.value.length;tagInput.oninput();
+assert.equal(suggestions.hidden,true);
+assert.deepEqual(Array.from(run("parseTags('Brand new topic')")),['Brand new topic']);
+console.log('Collection tag suggestions passed.');
+
+// Editing a saved paper uses the same chooser and saves normalized tags.
+run("papers=[{id:'edit-tags',title:'Tagged paper',authors:'',venue:'',year:2026,tags:['Cryptography'],status:'unread',importance:'normal',notes:''}];settings.collections=['Zero knowledge'];details('edit-tags')");
+assert.match(node('#modal-content').innerHTML,/id="detail-tags"/);
+const editTags=node('#detail-tags');
+editTags.setAttribute=tagInput.setAttribute;
+editTags.removeAttribute=tagInput.removeAttribute;
+editTags.focus=()=>{};
+editTags.setSelectionRange=tagInput.setSelectionRange;
+editTags.value='cr';editTags.selectionStart=2;editTags.oninput();
+assert.match(node('#detail-tags-suggestions').innerHTML,/Cryptography/);
+editTags.onkeydown({key:'Enter',preventDefault(){}});
+assert.equal(editTags.value,'Cryptography, ');
+node('#detail-title').value='Tagged paper';node('#detail-authors').value='';node('#detail-year').value='2026';node('#detail-venue').value='';node('#metric-value').value='';node('#detail-notes').value='';
+await node('#detail-form').onsubmit({preventDefault(){}});
+assert.deepEqual(Array.from(run('papers[0].tags')),['Cryptography']);
+console.log('Collection tag editing and persistence passed.');
+
+// ACM URLs resolve their DOI, including IEEE articles indexed in ACM's library.
+for(const path of ['doi/','doi/abs/','doi/full/','doi/pdf/','doi/epdf/']){
+ assert.equal(run(`getDoi('https://dl.acm.org/${path}10.1145/3658644.3690339?download=1#cite')`),'10.1145/3658644.3690339');
+}
+assert.equal(run("getDoi('dl.acm.org/doi/10.1109/TIFS.2020.3045904')"),'10.1109/TIFS.2020.3045904');
+assert.equal(run("getDoi('https://dl.acm.org/doi/10.1145%2F3658644.3690339')"),''); // DOI path must include the standard slash.
+assert.equal(run("getDoi('https://dl.acm.org/doi/10.1145/3658644.3690339/')"),'10.1145/3658644.3690339');
+for(const url of ['https://dl.acm.org.evil.test/doi/10.1145/3658644.3690339','https://user@dl.acm.org/doi/10.1145/3658644.3690339','https://dl.acm.org:8443/doi/10.1145/3658644.3690339','https://dl.acm.org/action/10.1145/3658644.3690339','https://dl.acm.org/doi/10.1145/%ZZ']){
+ context.acmUrl=url;assert.equal(run('getDoi(acmUrl)'),'');
+}
+assert.equal(run("crossrefVenue({'container-title':['Some Other Journal']})"),'Some Other Journal');
+assert.equal(run("crossrefVenue({'container-title':['ACM Conference on Computer Supported Cooperative Work']})"),'ACM Conference on Computer Supported Cooperative Work');
+run("papers=[];addPaper()");
+const acmRequests=[];
+for(const [name,doi,venue] of [['ccs','10.1145/3658644.3690339','ACM CCS'],['tifs','10.1109/TIFS.2020.3045904','IEEE TIFS']]){
+ const record=JSON.parse(fs.readFileSync(new URL(`fixtures/acm-${name}.json`,import.meta.url),'utf8'));
+ context.fetch=async url=>{acmRequests.push(url);return {ok:true,json:async()=>({message:record})}};
+ node('#paper-url').value='https://dl.acm.org/doi/'+doi;
+ await run('lookupMetadata()');
+ assert.equal(node('#paper-title').value,record.title[0]);
+ assert.equal(node('#paper-venue').value,venue);
+ node('#paper-tags').value='';node('#paper-status').value='unread';node('#paper-priority').value='normal';
+ await run('submitAdd({preventDefault(){}})');
+ assert.equal(run('papers[0].venue'),venue);
+ assert.equal(run('papers[0].doi').toLowerCase(),doi.toLowerCase());
+ assert.equal(run('papers[0].url'),node('#paper-url').value);
+ assert.equal(acmRequests.at(-1),'https://api.crossref.org/works/'+encodeURIComponent(doi));
+ assert.match(run("citation(papers[0],'bibtex')"),name==='ccs'?/@inproceedings/:/@article/);
+ const count=run('papers.length');
+ node('#paper-url').value='https://doi.org/'+doi;
+ await run('submitAdd({preventDefault(){}})');
+ assert.equal(run('papers.length'),count);
+ assert.match(node('#add-error').textContent,/already in your library/);
+}
+console.log('ACM links, real Crossref venue fixtures, save/cite, and DOI duplicate protection passed.');
