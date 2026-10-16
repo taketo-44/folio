@@ -108,7 +108,7 @@ console.log('Passed: phone library, unread navigation, search, collections, and 
 
 // Desktop tag clicks preserve other filters and can clear the collection.
 phone("navigate('library');statusFilter='unread';priorityFilter='high';query='goldreich';render()");
-assert.match(node('#main').innerHTML,/Collections & tags/);
+assert.match(node('#main').innerHTML,/data-choose-collections/);assert.doesNotMatch(node('#main').innerHTML,/desktop-collections/);
 const tagClick=tag=>phone(`document.click({target:{closest:()=>({dataset:{filterTag:${JSON.stringify(tag)}},id:'',hasAttribute:name=>name==='data-filter-tag'})}})`);
 await tagClick('Foundations');
 assert.equal(phone('collection'),'Foundations');
@@ -236,8 +236,8 @@ console.log('DOI lookup, Crossref venue fixtures, save/cite, and duplicate prote
 // Manage collections: rename every use, merge without duplicate tags, and remove only the tag.
 run("papers=[{id:'a',title:'A',authors:'',venue:'',notes:'Keep notes',pdfId:'keep-pdf',tags:['Crypto','Lattices'],status:'unread',importance:'normal',updated:1},{id:'b',title:'B',authors:'',venue:'',tags:['Crypto','Cryptography'],status:'read',importance:'high',updated:1}];settings={clientId:'keep-client',collections:['Crypto','Cryptography','Empty']};collection='Crypto';view='library'");
 run('manageCollections()');
-assert.match(node('#modal-content').innerHTML,/data-rename-tag="Crypto"/);
-assert.match(node('#modal-content').innerHTML,/data-remove-tag="Empty"/);
+assert.match(node('#modal-content').innerHTML,/data-edit-collection="Crypto"/);
+assert.match(node('#modal-content').innerHTML,/data-edit-collection="Empty"/);
 await run("changeCollection('Crypto','Cryptography')");
 assert.deepEqual(Array.from(run('papers[0].tags')),['Cryptography','Lattices']);
 assert.deepEqual(Array.from(run('papers[1].tags')),['Cryptography']);
@@ -260,8 +260,8 @@ assert.equal(run('settings.clientId'),undefined);
 assert.equal(run('collection'),'');
 await run("changeCollection('Empty','Empty renamed')");
 assert.ok(run("settings.collections.includes('Empty renamed')"));
-assert.match(run('desktopTagFilters()'),/data-manage-collections/);
-run('renderPhoneLibrary()');assert.match(node('#main').innerHTML,/data-manage-collections/);
+run('chooseCollections()');assert.match(node('#modal-content').innerHTML,/data-manage-collections/);
+run('renderPhoneLibrary()');assert.match(node('#main').innerHTML,/data-choose-collections/);
 run("view='settings';renderSettings()");assert.match(node('#main').innerHTML,/Manage collections/);
 console.log('Collection manager: rename, merge, delete, empty collections, filters, and local persistence passed.');
 
@@ -287,7 +287,7 @@ run("papers=[{id:'dsa',title:'DSA paper',authors:'',venue:'',tags:['PQC/ML-DSA']
 assert.equal(run('filtered().length'),2);
 assert.deepEqual(Array.from(run('collectionTree().filter(t=>t.path.startsWith("PQC")).map(t=>t.path)')),['PQC','PQC/ML-DSA','PQC/ML-KEM']);
 assert.equal(run('collectionCount("PQC")'),2);assert.equal(run('collectionTree().find(t=>t.path==="PQC/ML-DSA").depth'),1);
-assert.match(run('desktopTagFilters()'),/--collection-depth:1/);
+run('chooseCollections()');assert.match(node('#collection-picker-tree').innerHTML,/--collection-depth:1/);
 run("collection='PQC/ML-DSA'");assert.equal(run('filtered().length'),1);
 await run("changeCollection('PQC','Post-quantum')");assert.equal(run('collection'),'Post-quantum/ML-DSA');assert.equal(run('papers[0].tags[0]'),'Post-quantum/ML-DSA');
 await assert.rejects(run("changeCollection('Post-quantum','Post-quantum/Child')"),/own branch/);
@@ -323,7 +323,7 @@ console.log('arXiv URL lookup, DOI-free citation save, abstract capture, BibTeX 
 run("papers=[{id:'one',title:'Signature',authors:'',venue:'',tags:['PQC/ML-DSA','Lattices'],status:'unread',importance:'high',notes:'Keep note'},{id:'two',title:'Encryption',authors:'',venue:'',tags:['PQC/ML-KEM'],status:'read',importance:'normal',notes:''},{id:'three',title:'Lattices',authors:'',venue:'',tags:['Lattices'],status:'unread',importance:'high',notes:''}];settings={collections:['PQC','Lattices']};navigate('library');toggleCollection('PQC');toggleCollection('Lattices')");
 assert.equal(run('filtered().length'),3);assert.deepEqual(Array.from(run('activeCollections()')),['PQC','Lattices']);
 run("collectionMatch='all';query='Signature';statusFilter='unread';priorityFilter='high';render()");assert.equal(run('filtered().length'),1);
-assert.match(node('#main').innerHTML,/2 collections/);assert.match(node('#main').innerHTML,/All selected collections/);
+assert.match(node('#main').innerHTML,/2 collections/);assert.match(node('#main').innerHTML,/data-choose-collections/);
 const multiHash=run('collectionHash()');context.multiHash=multiHash;
 assert.deepEqual(Array.from(run('parseCollectionHash(multiHash).tags')),['PQC','Lattices']);assert.equal(run('parseCollectionHash(multiHash).match'),'all');
 assert.equal(run('restoreCollectionHash(multiHash)'),false);assert.equal(run('query'),'Signature');
@@ -331,14 +331,14 @@ run("toggleCollection('')");assert.deepEqual(Array.from(run('activeCollections()
 assert.equal(run("restoreCollectionHash('collection=PQC%2FML-DSA')"),true);assert.equal(run('collection'),'PQC/ML-DSA');
 assert.deepEqual(Array.from(run("parseCollectionHash('collections=not-json').tags")),[]);
 run("navigate('queue');toggleCollection('PQC');toggleCollection('Lattices')");assert.equal(run('filtered().length'),2);assert.equal(run('parseCollectionHash(collectionHash()).view'),'queue');
-run("renderPhoneLibrary()");assert.match(node('#main').innerHTML,/id="collection-match"/);assert.match(node('#main').innerHTML,/aria-pressed="true"/);
+run("renderPhoneLibrary()");assert.match(node('#main').innerHTML,/data-choose-collections/);assert.doesNotMatch(node('#main').innerHTML,/phone-collections/);
 // Move a branch to a new parent and then back to the top level; selected paths follow the move.
 run("view='library';query='';statusFilter='all';priorityFilter='all';settings={collections:['PQC','Signatures','Other']};papers=[{id:'root',title:'Root',authors:'',venue:'',tags:['PQC/ML-DSA'],status:'unread',importance:'normal',notes:'Keep note'},{id:'child',title:'Child',authors:'',venue:'',tags:['PQC/ML-DSA/Implementations','Other'],status:'unread',importance:'normal',notes:''}];setCollectionFilters(['PQC/ML-DSA','Other'])");
 await run("moveCollection('PQC/ML-DSA','Signatures')");assert.equal(run('papers[1].tags[0]'),'Signatures/ML-DSA/Implementations');assert.deepEqual(Array.from(run('activeCollections()')),['Signatures/ML-DSA','Other']);assert.equal(run('papers[0].notes'),'Keep note');
 await assert.rejects(run("moveCollection('Signatures','Signatures/ML-DSA')"),/own branch/);
 await assert.rejects(run("moveCollection('Signatures/ML-DSA','Does not exist')"),/destination/);
 await run("moveCollection('Signatures/ML-DSA','')");assert.equal(run('papers[0].tags[0]'),'ML-DSA');assert.equal(run('papers[1].tags[0]'),'ML-DSA/Implementations');
-run("settings.collections.push('PQC/ML-DSA');manageCollections()");assert.match(node('#modal-content').innerHTML,/data-move-tag="ML-DSA"/);
+run("settings.collections.push('PQC/ML-DSA');manageCollections()");assert.match(node('#modal-content').innerHTML,/data-edit-collection="ML-DSA"/);
 run("moveCollectionDialog('ML-DSA')");assert.match(node('#modal-content').innerHTML,/Top level/);assert.doesNotMatch(node('#modal-content').innerHTML,/<option value="ML-DSA\/Implementations"/);
 node('#move-collection-parent').value='PQC';node('#move-collection-parent').onchange();assert.equal(node('#move-merge-warning').hidden,false);
 await node('#move-collection-form').onsubmit({preventDefault(){}});assert.match(node('#move-collection-error').textContent,/Confirm the merge/);assert.equal(run('papers[0].tags[0]'),'ML-DSA');
@@ -348,12 +348,16 @@ console.log('Multiple collection filters, any/all matching, hash links, branch m
 
 // Native drag/drop and touch gestures use the same branch move operation and merge confirmation.
 run("papers=[{id:'drag-a',title:'Drag A',authors:'',venue:'',tags:['ML-DSA'],status:'unread',importance:'normal',notes:'Keep note'},{id:'drag-b',title:'Drag B',authors:'',venue:'',tags:['ML-DSA/Implementations'],status:'unread',importance:'normal',notes:''}];settings={collections:['ML-DSA','PQC']};view='library';setCollectionFilters(['ML-DSA']);manageCollections()");
-assert.match(node('#modal-content').innerHTML,/draggable="true"/);assert.match(node('#modal-content').innerHTML,/data-drop-parent=""/);
+assert.match(node('#modal-content').innerHTML,/draggable="false"/);assert.match(node('#modal-content').innerHTML,/data-drop-parent=""/);
 const dragManager=node('#collection-manager');
+const previews=[];
+document.createElement=()=>{const el={dataset:{},style:{},offsetHeight:90,setAttribute(){},remove(){this.removed=true},innerHTML:''};previews.push(el);return el};
+dragManager.querySelectorAll=()=>[];
+
 const dragZones=new Set();
-function dragZone(path){const z={dataset:{dropParent:path},classList:{add(){},remove(){}},closest(){return z}};dragZones.add(z);return z}
+function dragZone(path){const z={getBoundingClientRect(){return {top:0,bottom:100}},dataset:{dropParent:path},classList:{add(){},remove(){}},after(el){this.preview=el},closest(selector){return selector==='[data-drop-parent]'?z:null}};dragZones.add(z);return z}
 function dragGrip(path){const z=dragZone(path);const g={dataset:{dragCollection:path},closest(selector){return selector==='[data-drag-collection]'?g:z},capture:null,setPointerCapture(id){this.capture=id},hasPointerCapture(id){return this.capture===id},releasePointerCapture(){this.capture=null}};dragZones.add(g);return g}
-dragManager.contains=element=>dragZones.has(element);
+dragManager.contains=element=>dragZones.has(element);dragManager.clientHeight=400;
 const dt={setData(type,value){this[type]=value}};
 const pqcZone=dragZone('PQC'),rootZone=dragZone('');
 const nativeStart=grip=>dragManager.ondragstart({target:grip,dataTransfer:dt,preventDefault(){}});
@@ -378,3 +382,63 @@ run("papers.push({id:'collision',title:'Collision',authors:'',venue:'',tags:['ML
 nativeStart(dragGrip('ML-DSA'));await nativeDrop(pqcZone);assert.match(node('#modal-content').innerHTML,/Move collection/);assert.equal(node('#move-collection-parent').value,'PQC');assert.equal(node('#move-merge-warning').hidden,false);assert.equal(run('papers[2].tags[0]'),'ML-DSA');
 node('#move-merge-confirm').checked=true;await node('#move-collection-form').onsubmit({preventDefault(){}});assert.equal(run('papers[2].tags[0]'),'PQC/ML-DSA');
 console.log('Collection drag/drop: native and touch moves, root drops, descendant guards, cancellation, external drops, and merge confirmation passed.');
+
+// Clicking the library-style tag opens its editor; renaming keeps its parent and descendants.
+run("papers=[{id:'edit',title:'Edit',tags:['PQC/ML-DSA/Code'],status:'unread',importance:'normal',notes:'Keep'}];settings={collections:['PQC/ML-DSA']};manageCollections()");
+assert.match(node('#modal-content').innerHTML,/collection-tree-list/);assert.match(node('#modal-content').innerHTML,/filter-tag collection-edit-tag/);
+node('#collection-manager').onclick({target:{closest(){return {dataset:{editCollection:'PQC/ML-DSA'}}}}});
+assert.match(node('#modal-content').innerHTML,/Edit collection/);assert.match(node('#modal-content').innerHTML,/Delete collection/);
+node('#edit-collection-name').value='Signatures';await node('#edit-collection-form').onsubmit({preventDefault(){}});
+assert.equal(run('papers[0].tags[0]'),'PQC/Signatures/Code');assert.equal(run('papers[0].notes'),'Keep');
+run("editCollection('PQC/Signatures')");node('#edit-collection-delete').onclick();assert.equal(run('papers.length'),1);assert.match(node('#modal-content').innerHTML,/Your papers and notes are kept/);
+await node('#confirm-action').onclick();assert.equal(run('papers.length'),1);assert.deepEqual(Array.from(run('papers[0].tags')),[]);
+console.log('Collection tree chips: click editor, branch rename and confirmed deletion preserve paper records.');
+
+// Mouse gestures follow the actual pointer path, including pointer capture over another tag.
+run("papers=[{id:'mouse',title:'Mouse',tags:['ML-DSA'],status:'unread',importance:'normal'}];settings={collections:['ML-DSA','PQC']};manageCollections()");
+const mouseGrip=dragGrip('ML-DSA');document.elementFromPoint=()=>pqcZone;
+dragManager.onpointerdown({target:mouseGrip,pointerType:'mouse',button:0,pointerId:10,clientX:10,clientY:100,preventDefault(){}});
+assert.equal(mouseGrip.capture,10);
+dragManager.onpointermove({pointerId:10,clientX:50,clientY:120,preventDefault(){}});
+assert.match(node('#collection-drag-status').textContent,/under PQC/);
+assert.match(pqcZone.preview.innerHTML,/ML-DSA/);assert.match(pqcZone.preview.innerHTML,/--collection-depth:1/);assert.equal(run('papers[0].tags[0]'),'ML-DSA');
+await dragManager.onpointerup({pointerId:10,clientX:50,clientY:120});
+assert.equal(mouseGrip.capture,null);assert.equal(run('papers[0].tags[0]'),'PQC/ML-DSA');
+console.log('Mouse pointer dragging nests the source tag beneath its drop target.');
+
+// Preview includes the whole branch, remains a stable hit target, and restores origins on cancel.
+run("papers=[{id:'preview',title:'Preview',tags:['ML-DSA/Code'],status:'unread',importance:'normal'}];settings={collections:['ML-DSA','PQC']};manageCollections()");
+const origin=dragZone('ML-DSA'),childOrigin=dragZone('ML-DSA/Code');
+for(const row of [origin,childOrigin]){row.classes=new Set();row.classList={add(c){row.classes.add(c)},remove(c){row.classes.delete(c)}}}
+dragManager.querySelectorAll=()=>[origin,childOrigin,pqcZone];
+nativeStart(dragGrip('ML-DSA'));
+assert.ok(origin.classes.has('collection-drag-origin'));assert.ok(childOrigin.classes.has('collection-drag-origin'));
+dragManager.ondragover({target:pqcZone,dataTransfer:dt,preventDefault(){}});
+const livePreview=pqcZone.preview;
+assert.match(livePreview.innerHTML,/--collection-depth:1/);assert.match(livePreview.innerHTML,/--collection-depth:2/);assert.match(livePreview.innerHTML,/Code/);
+const previewHit={closest(selector){return selector==='[data-collection-preview]'?livePreview:null}};
+dragManager.ondragover({target:previewHit,dataTransfer:dt,preventDefault(){}});assert.equal(pqcZone.preview,livePreview);assert.equal(livePreview.removed,undefined);assert.equal(livePreview.style.top,'0px');assert.match(livePreview.innerHTML,/data-preview-tag="PQC"/);
+assert.equal(run('papers[0].tags[0]'),'ML-DSA/Code');
+dragManager.onkeydown({key:'Escape',preventDefault(){},stopPropagation(){}});
+assert.equal(livePreview.removed,true);assert.equal(origin.classes.size,0);assert.equal(childOrigin.classes.size,0);assert.equal(run('papers[0].tags[0]'),'ML-DSA/Code');
+console.log('Live branch preview: nesting depth, descendants, stable hover and cancellation passed.');
+
+// Full-tree preview keeps unrelated tags, their children, and the source branch in the resulting order.
+run("papers=[{tags:['PQC/ML-KEM','Signatures/ML-DSA/Code','Other/Notes']}];settings={collections:['Empty']}");
+const fullPreview=Array.from(run("collectionPreviewRows('Signatures/ML-DSA','PQC')"));
+assert.deepEqual(fullPreview.map(t=>t.path),['Empty','Other','Other/Notes','PQC','PQC/ML-DSA','PQC/ML-DSA/Code','PQC/ML-KEM','Signatures']);
+assert.equal(fullPreview.find(t=>t.path==='PQC/ML-DSA/Code').depth,2);
+assert.equal(run("papers[0].tags[1]"),'Signatures/ML-DSA/Code');
+console.log('Full collection preview includes every tag in the proposed hierarchy without changing saved data.');
+
+// Compact collection picker drafts selections, searches full paths, and preserves other filters.
+run("papers=[{id:'pick-one',title:'Signature',authors:'',venue:'',tags:['PQC/ML-DSA','Lattices'],status:'unread',importance:'high'},{id:'pick-two',title:'Other',authors:'',venue:'',tags:['Lattices'],status:'read',importance:'normal'}];settings={collections:['PQC/ML-DSA','Lattices']};view='library';setCollectionFilters([]);query='Signature';statusFilter='unread';priorityFilter='high';chooseCollections()");
+const pick=(path,checked)=>node('#collection-picker-tree').onchange({target:{dataset:{pickCollection:path},checked}});
+pick('PQC',true);pick('Lattices',true);assert.equal(run('activeCollections().length'),0);
+node('#collection-picker-search').value='ML-DSA';node('#collection-picker-search').oninput();
+assert.match(node('#collection-picker-tree').innerHTML,/data-pick-collection="PQC"/);assert.match(node('#collection-picker-tree').innerHTML,/ML-DSA/);assert.doesNotMatch(node('#collection-picker-tree').innerHTML,/Lattices/);
+node('#collection-picker-match').onchange({target:{value:'all'}});node('#collection-picker-apply').onclick();
+assert.deepEqual(Array.from(run('activeCollections()')),['PQC','Lattices']);assert.equal(run('collectionMatch'),'all');assert.equal(run('query'),'Signature');assert.equal(run('statusFilter'),'unread');assert.equal(run('priorityFilter'),'high');assert.equal(run('filtered().length'),1);
+run('chooseCollections()');node('#collection-picker-clear').onclick();run('close()');assert.equal(run('activeCollections().length'),2);
+run('chooseCollections()');node('#collection-picker-clear').onclick();node('#collection-picker-apply').onclick();assert.equal(run('activeCollections().length'),0);assert.equal(run('collectionMatch'),'any');
+console.log('Compact collection picker: draft/apply/cancel, path search, multi-selection and filter preservation passed.');
