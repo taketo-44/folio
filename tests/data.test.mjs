@@ -446,15 +446,16 @@ run('chooseCollections()');node('#collection-picker-clear').onclick();run('close
 run('chooseCollections()');node('#collection-picker-clear').onclick();node('#collection-picker-apply').onclick();assert.equal(run('activeCollections().length'),0);assert.equal(run('collectionMatch'),'any');
 console.log('Compact collection picker: draft/apply/cancel, path search, multi-selection and filter preservation passed.');
 
-// Rating controls choose the clicked star exactly, including clearing to zero.
+// Rating controls choose the clicked star; clicking the selected star clears to zero.
 for(const [old,value] of [['low',0],['normal',3],['high',5]])assert.equal(run(`normalizeImportance(${JSON.stringify(old)})`),value);
 run("papers=[{id:'stars',title:'Star paper',authors:'',venue:'',tags:[],status:'unread',importance:'normal',notes:''}];view='library';query='';statusFilter='all';priorityFilter='all';setCollectionFilters([]);render()");
 const rate=async value=>run(`localClick({target:{closest:()=>({dataset:{ratePaper:'stars',ratingValue:'${value}'},id:'',hasAttribute:()=>false})}})`);
 await rate(4);assert.equal(run('papers[0].importance'),4);assert.equal(JSON.parse(memory.get('folio-library-v1'))[0].importance,4);
-assert.match(run("card(papers[0])"),/Set 4 stars/);run("view='favorites'");assert.equal(run('filtered().length'),1);
-await rate(0);assert.equal(run('papers[0].importance'),0);assert.equal(run('filtered().length'),0);
+assert.match(run("card(papers[0])"),/Clear importance/);assert.doesNotMatch(run("card(papers[0])"),/rating-zero/);run("view='favorites'");assert.equal(run('filtered().length'),0);
+await rate(5);assert.equal(run('filtered().length'),1);
+await rate(5);assert.equal(run('papers[0].importance'),0);assert.equal(run('filtered().length'),0);
 run("view='library';addPaper()");assert.equal(node('#paper-priority').value,3);
-await run("localClick({target:{closest:()=>({dataset:{ratingInput:'paper-priority',ratingValue:'2'},id:'',hasAttribute:()=>false})}})");assert.equal(node('#paper-priority').value,2);assert.equal(run("readRating('paper-priority')"),2);
+await run("localClick({target:{closest:()=>({dataset:{ratingInput:'paper-priority',ratingValue:'2'},id:'',hasAttribute:()=>false})}})");assert.equal(node('#paper-priority').value,2);assert.equal(run("readRating('paper-priority')"),2);await run("localClick({target:{closest:()=>({dataset:{ratingInput:'paper-priority',ratingValue:'2'},id:'',hasAttribute:()=>false})}})");assert.equal(run("readRating('paper-priority')"),0);
 run("papers=[{id:'zero',importance:0,added:1},{id:'two',importance:2,added:1},{id:'five',importance:5,added:1}].map(p=>({...p,title:p.id,authors:'',venue:'',tags:[],status:'unread'}));sort='importance';priorityFilter='all'");assert.deepEqual(Array.from(run('filtered().map(p=>p.importance)')),[5,2,0]);run("priorityFilter='0'");assert.deepEqual(Array.from(run('filtered().map(p=>p.id)')),['zero']);
 for(const value of [0,1,2,3,4,5,'low','normal','high']){context.ratingBackup={version:1,papers:[{id:'rated',title:'Rated',importance:value}]};assert.equal(run('validateBackup(ratingBackup)[0].importance'),normalizeImportance(value))}
 console.log('Importance stars: exact click selection, zero, default 3, legacy mapping, favorites, filters, sorting and backup round-trips passed.');
