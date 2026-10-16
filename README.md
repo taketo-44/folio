@@ -26,7 +26,7 @@ See [WINDOWS-SETUP.md](WINDOWS-SETUP.md) for private HTTPS hosting on a Windows 
 
 - A dedicated phone layout at viewport widths up to 600 px: bottom navigation, a compact reading overview, collection chips, collapsible filters, and touch-friendly dialogs. Wider screens retain the desktop library.
 
-- Paper URLs, IACR ePrint metadata lookup (including PDF and ia.cr links), Springer chapter and DOI lookup through Crossref, TCHES article metadata lookup, manual citations, and editable source links.
+- Paper URLs, IACR ePrint metadata lookup (including PDF and ia.cr links), IEEE Xplore document lookup, Springer chapter and DOI lookup through Crossref, TCHES article metadata lookup, manual citations, and editable source links.
 - Search, collections, read/unread/reading status, three importance levels, notes, grid and list views. The desktop library lists all collection/tag filters with counts and combines tag selection with search, status, and importance filters.
 - An unread reading queue with priority-aware and random selection.
 - On-demand scholarly discovery through Crossref, excluding saved papers by DOI and title.
@@ -50,3 +50,5 @@ node tests/metadata.test.mjs
 # folio
 
 Folio stores citation metadata and links only. PDF uploads, attachments, and Google Drive integration are removed.
+
+IEEE Xplore: paste a document or abstract link (or a stamp link containing `arnumber`) and choose Look up metadata. The server reads citation metadata from the fixed IEEE host and uses Crossref when a DOI is available. IEEE may block automated requests; in that case paste the DOI directly or save citation details manually. No PDF is downloaded or stored.

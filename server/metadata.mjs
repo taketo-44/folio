@@ -24,24 +24,33 @@ export function parseCitation(html, id, source = 'tches') {
       fields.get(name).push(attrs.content.trim());
     }
   }
+  let embedded={};
+  if(source==='ieee'){
+    const json=html.match(/xplGlobal\.document\.metadata\s*=\s*(\{[\s\S]*?\})\s*;/)?.[1];
+    if(json){try{embedded=JSON.parse(json)}catch{}}
+    if(typeof embedded!=='object'||!embedded||Array.isArray(embedded))embedded={};
+  }
+  const text=value=>typeof value==='string'?value:'';
   const first = name => fields.get(name)?.[0] || '';
-  const title = first('citation_title').slice(0,500);
-  if (!title) throw new Error((source==='eprint'?'IACR ePrint':'TCHES')+' did not return citation details. Enter them manually or use the DOI.');
-  const doi = first('citation_doi');
+  const venue=first('citation_journal_title')||first('citation_conference_title')||text(embedded.publicationTitle);
+  const conference=source==='ieee'&&!!(first('citation_conference_title')||/conference/i.test(text(embedded.contentType)));
+  const title = (first('citation_title')||text(embedded.title)).slice(0,500);
+  if (!title) throw new Error((source==='eprint'?'IACR ePrint':source==='ieee'?'IEEE Xplore':'TCHES')+' did not return citation details. Enter them manually or use the DOI.');
+  const doi = first('citation_doi')||text(embedded.doi);
   return {
-    title, authors:(fields.get('citation_author') || []).slice(0,100).join('; ').slice(0,5000),
-    year:Number((first('citation_date') || first('citation_publication_date')).match(/\b\d{4}\b/)?.[0]) || '',
-    venue:first('citation_journal_title').slice(0,1000),
+    title, authors:(fields.get('citation_author') || (Array.isArray(embedded.authors)?embedded.authors.map(a=>text(a?.name)).filter(Boolean):[])).slice(0,100).join('; ').slice(0,5000),
+    year:Number((first('citation_date') || first('citation_publication_date') || text(embedded.publicationDate)).match(/\b\d{4}\b/)?.[0]) || '',
+    venue:venue.slice(0,1000),
     doi:/^10\.\d{4,9}\/\S{1,2000}$/i.test(doi) ? doi : '',
-    url:source==='eprint'?'https://eprint.iacr.org/'+id:'https://tches.iacr.org/index.php/TCHES/article/view/'+id,
-    metadataSource:source==='eprint'?'IACR ePrint':'TCHES', type:source==='eprint'?'posted-content':'journal-article'
+    url:source==='ieee'?'https://ieeexplore.ieee.org/document/'+id:source==='eprint'?'https://eprint.iacr.org/'+id:'https://tches.iacr.org/index.php/TCHES/article/view/'+id,
+    metadataSource:source==='ieee'?'IEEE Xplore':source==='eprint'?'IACR ePrint':'TCHES', type:source==='eprint'?'posted-content':conference?'proceedings-article':'journal-article'
   };
 }
 
 export function fetchArticle(id, source = 'tches') {
-  const valid=source==='eprint'?/^(?:19|20)\d{2}\/[1-9]\d{0,9}$/.test(id):source==='tches'&&/^[1-9]\d{0,9}$/.test(id);
+  const valid=source==='eprint'?/^(?:19|20)\d{2}\/[1-9]\d{0,9}$/.test(id):['tches','ieee'].includes(source)&&/^[1-9]\d{0,9}$/.test(id);
   if(!valid)return Promise.reject(new Error('Invalid publisher paper identifier.'));
-  const url=source==='eprint'?'https://eprint.iacr.org/'+id:'https://tches.iacr.org/index.php/TCHES/article/view/'+id;
+  const url=source==='ieee'?'https://ieeexplore.ieee.org/document/'+id:source==='eprint'?'https://eprint.iacr.org/'+id:'https://tches.iacr.org/index.php/TCHES/article/view/'+id;
   return new Promise((resolve,reject) => {
     // The only upstream is this fixed HTTPS publisher path. Never follow redirects.
     const req = https.get(url, {
@@ -83,11 +92,11 @@ export function createMetadataServer(loadArticle = fetchArticle, allowedOrigin) 
       const url = new URL(req.url,'http://localhost');
       if (url.pathname === '/api/health' && !url.search) { reply(res,200,{service:'folio-metadata'}); return; }
       const id = url.searchParams.get('id');
-      if (!['/api/tches','/api/eprint'].includes(url.pathname)) { reply(res,404,{error:'Not found.'}); return; }
-      const source=url.pathname==='/api/eprint'?'eprint':'tches';
+      if (!['/api/tches','/api/eprint','/api/ieee'].includes(url.pathname)) { reply(res,404,{error:'Not found.'}); return; }
+      const source=url.pathname==='/api/ieee'?'ieee':url.pathname==='/api/eprint'?'eprint':'tches';
       const valid=source==='eprint'?/^(?:19|20)\d{2}\/[1-9]\d{0,9}$/.test(id || ''):/^[1-9]\d{0,9}$/.test(id || '');
       if (!valid || [...url.searchParams.keys()].some(k=>k!=='id') || url.searchParams.getAll('id').length!==1) {
-        reply(res,400,{error:'Enter a valid '+(source==='eprint'?'IACR ePrint paper':'TCHES article')+' link.'}); return;
+        reply(res,400,{error:'Enter a valid '+(source==='eprint'?'IACR ePrint paper':source==='ieee'?'IEEE Xplore document':'TCHES article')+' link.'}); return;
       }
       const cacheKey=source+':'+id;
       const cached = cache.get(cacheKey);

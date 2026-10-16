@@ -320,3 +320,24 @@ await node('#detail-form').onsubmit({preventDefault(){}});
 assert.equal(run('papers[0].url'),'https://example.com/new');
 run('renderSettings()');assert.doesNotMatch(node('#main').innerHTML,/Google|Drive|PDF|OAuth/);
 console.log('Citation-only imports, editable source links, and removal of PDF/Drive controls passed.');
+
+// IEEE document, abstract, and external PDF-view links all identify the same citation.
+for(const url of ['https://ieeexplore.ieee.org/document/1234567/','ieeexplore.ieee.org/abstract/document/1234567','https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=1234567','https://ieeexplore.ieee.org/xpl/documentDetails.jsp?arnumber=1234567','https://ieeexplore.ieee.org/xpls/abs_all.jsp?arnumber=1234567']){
+ context.ieeeUrl=url;assert.equal(run('getIeeeId(ieeeUrl)'),'1234567');
+}
+for(const url of ['https://ieeexplore.ieee.org.evil.test/document/1234567','https://user@ieeexplore.ieee.org/document/1234567','https://ieeexplore.ieee.org:8443/document/1234567','https://ieeexplore.ieee.org/document/0','https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123&arnumber=456']){
+ context.ieeeUrl=url;assert.equal(run('getIeeeId(ieeeUrl)'),'');
+}
+run('papers=[];addPaper()');
+const ieeeMetadata={title:'An IEEE paper',authors:'A. Author',year:2021,venue:'IEEE Transactions on Information Forensics and Security',doi:'10.1109/TIFS.2020.3045904',type:'journal-article',url:'https://ieeexplore.ieee.org/document/1234567',metadataSource:'IEEE Xplore'};
+const ieeeCalls=[];
+context.fetch=async url=>{ieeeCalls.push(url);if(url.startsWith('/api/ieee'))return {ok:true,json:async()=>ieeeMetadata};throw new Error('Crossref unavailable')};
+node('#paper-url').value='https://ieeexplore.ieee.org/document/1234567';await run('lookupMetadata()');assert.equal(node('#paper-title').value,'An IEEE paper');assert.equal(node('#paper-venue').value,'IEEE TIFS');
+node('#paper-tags').value='';await run('submitAdd({preventDefault(){}})');assert.equal(run('papers.length'),1);assert.equal(run('papers[0].doi'),ieeeMetadata.doi);assert.equal(run('papers[0].url'),ieeeMetadata.url);
+node('#paper-url').value='https://ieeexplore.ieee.org/abstract/document/1234567';await run('submitAdd({preventDefault(){}})');assert.equal(run('papers.length'),1);assert.match(node('#add-error').textContent,/already in your library/);
+assert.equal(ieeeCalls[0],'/api/ieee?id=1234567');
+// When Crossref is available, use its full citation metadata after resolving the IEEE DOI.
+const ieeeCrossref=JSON.parse(fs.readFileSync(new URL('fixtures/acm-tifs.json',import.meta.url),'utf8'));
+context.fetch=async url=>({ok:true,json:async()=>url.startsWith('/api/ieee')?ieeeMetadata:{message:ieeeCrossref}});
+assert.equal((await run("lookupPaper('https://ieeexplore.ieee.org/document/1234567')")).title,ieeeCrossref.title[0]);
+console.log('IEEE URL variants, metadata lookup/save, venue names, Crossref fallback, and duplicate detection passed.');

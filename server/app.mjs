@@ -206,7 +206,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
           }
           fail(404,'Not found.');
         }
-        if (['/api/tches','/api/eprint'].includes(url.pathname) && req.method === 'GET') {
+        if (['/api/tches','/api/eprint','/api/ieee'].includes(url.pathname) && req.method === 'GET') {
           // Reuse the constrained publisher lookup without starting another listener.
           metadata.emit('request',req,res);return;
         }

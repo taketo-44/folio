@@ -13,7 +13,7 @@ const server=http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');
   const url=new URL(req.url,origin);
   if(req.headers.host!=='127.0.0.1:'+port){res.writeHead(403);res.end('Use '+origin);return}
-  if(['/api/tches','/api/eprint'].includes(url.pathname)){metadata.emit('request',req,res);return}
+  if(['/api/tches','/api/eprint','/api/ieee'].includes(url.pathname)){metadata.emit('request',req,res);return}
   if(!['GET','HEAD'].includes(req.method)){res.writeHead(405);res.end();return}
   const name=url.pathname==='/'?'index.html':url.pathname.slice(1);
   if(!Object.hasOwn(types,name)){res.writeHead(404,{'Content-Type':'application/json'});res.end('{"error":"Not found."}');return}
