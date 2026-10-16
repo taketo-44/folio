@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {createClassifier,normalizeSuggestions} from './classify.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -25,7 +26,7 @@ function validate(data) {
     if (!p || typeof p.id !== 'string' || !/^[\w-]{1,100}$/.test(p.id) || ids.has(p.id) || typeof p.title !== 'string' || !p.title.trim() || p.title.length > 500) fail(400, 'Invalid paper ID or title.');
     ids.add(p.id);
     if (!['read','reading','unread'].includes(p.status) || !['high','normal','low'].includes(p.importance) || !Array.isArray(p.tags) || p.tags.length > 50 || p.tags.some(t => typeof t !== 'string' || t.length > 200)) fail(400, 'Invalid paper flags or tags.');
-    for (const [field,max] of Object.entries({authors:5000,venue:1000,notes:100000,doi:2000,url:4000,rank:100,metricType:100,metricSource:4000,type:100,metadataSource:100})) {
+    for (const [field,max] of Object.entries({authors:5000,venue:1000,notes:100000,doi:2000,url:4000,rank:100,metricType:100,metricSource:4000,type:100,metadataSource:100,abstract:20000})) {
       if (p[field] !== undefined && (typeof p[field] !== 'string' || p[field].length > max)) fail(400, 'Invalid '+field+'.');
     }
     for (const field of ['url','metricSource']) if (p[field]) {
@@ -36,16 +37,21 @@ function validate(data) {
     if (p.metricYear !== undefined && typeof p.metricYear !== 'string' && typeof p.metricYear !== 'number') fail(400, 'Invalid metric year.');
     if (p.sample !== undefined && typeof p.sample !== 'boolean') fail(400, 'Invalid sample flag.');
     // Only persist citation metadata, flags, links, and notes.
-    const allowed = new Set(['id','title','authors','venue','notes','doi','url','rank','metricType','metricSource','pdfName','type','metadataSource','status','importance','tags','year','metricYear','added','updated','sample']);
+    const allowed = new Set(['id','title','authors','venue','notes','doi','url','rank','metricType','metricSource','abstract','type','metadataSource','status','importance','tags','year','metricYear','added','updated','sample']);
     for (const field of Object.keys(p)) if (!allowed.has(field)) delete p[field];
   }
   const s = data.settings;
   if (s.collections !== undefined && (!Array.isArray(s.collections) || s.collections.length > 1000 || s.collections.some(t => typeof t !== 'string' || t.length > 200))) fail(400, 'Invalid collections.');
-  data.settings = {collections:s.collections || []};
+  if(s.autoCollections!==undefined&&typeof s.autoCollections!=='boolean')fail(400,'Invalid automatic collections setting.');
+  if(s.autoCreateCollections!==undefined&&typeof s.autoCreateCollections!=='boolean')fail(400,'Invalid collection creation setting.');
+  if(s.collectionInstructions!==undefined&&(typeof s.collectionInstructions!=='string'||s.collectionInstructions.length>1000))fail(400,'Collection instructions must be at most 1000 characters.');
+  data.settings = {collections:s.collections || [],...(s.autoCollections!==undefined?{autoCollections:s.autoCollections}:{}),...(s.autoCreateCollections!==undefined?{autoCreateCollections:s.autoCreateCollections}:{}),...(s.collectionInstructions!==undefined?{collectionInstructions:s.collectionInstructions}:{})};
   return data;
 }
 
-export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp = false, metadata = createMetadataServer(undefined, origin)} = {}) {
+export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp = false, classifier=createClassifier(), aiDailyLimit=100, aiUserDailyLimit=20, metadata = createMetadataServer(undefined, origin)} = {}) {
+  if(!Number.isSafeInteger(aiDailyLimit)||aiDailyLimit<1||!Number.isSafeInteger(aiUserDailyLimit)||aiUserDailyLimit<1)throw new Error('AI daily limits must be positive integers.');
+  const aiPending=new Set();
   const publicURL = new URL(origin);
   if (publicURL.origin !== origin || (publicURL.protocol !== 'https:' && !(allowHttp && ['localhost','127.0.0.1'].includes(publicURL.hostname) && publicURL.protocol === 'http:'))) throw new Error('APP_ORIGIN must be an exact HTTPS origin (or loopback HTTP for development).');
   if (!/^[a-f0-9]{32}:[a-f0-9]{128}$/.test(hash || '')) throw new Error('Set FOLIO_PASSWORD_HASH using server/password.mjs.');
@@ -66,6 +72,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
       CREATE TABLE IF NOT EXISTS user_libraries (user_id INTEGER PRIMARY KEY REFERENCES users(id), revision INTEGER NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS user_sessions (id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), csrf TEXT NOT NULL, expires INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS sessions_by_user ON user_sessions(user_id);
+      CREATE TABLE IF NOT EXISTS ai_usage (user_id INTEGER NOT NULL REFERENCES users(id), day TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(user_id,day));
       CREATE TABLE IF NOT EXISTS invitations (id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, created_by INTEGER NOT NULL REFERENCES users(id), expires INTEGER NOT NULL, created INTEGER NOT NULL);`);
     if(!db.prepare('SELECT id FROM users LIMIT 1').get()){
       const legacy=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='library'").get()?db.prepare('SELECT revision,data FROM library WHERE id=1').get():null;
@@ -111,7 +118,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
         const id=token(),csrf=token(),now=Date.now();
         db.prepare('DELETE FROM user_sessions WHERE expires < ?').run(now);
         db.prepare('INSERT INTO user_sessions VALUES (?,?,?,?)').run(digest(id),user.id,csrf,now+7*86400000);
-        res.setHeader('Set-Cookie',cookie(id,7*86400));return {csrf,user:publicUser(user)};
+        res.setHeader('Set-Cookie',cookie(id,7*86400));return {csrf,user:publicUser(user),aiConfigured:classifier.enabled===true};
       };
       if (['/api/login','/api/register'].includes(url.pathname) && req.method === 'POST') {
         const now=Date.now();
@@ -156,7 +163,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
         const user=db.prepare('SELECT * FROM users WHERE id=?').get(session.user_id);
         if(req.headers['x-folio-user']&&req.headers['x-folio-user']!==String(user.id)){reply(res,409,{error:'The signed-in account changed. Sign in again to continue.',accountChanged:true});return;}
         if (mutating && req.headers['x-csrf-token'] !== session.csrf) fail(403,'Invalid session token.');
-        if (url.pathname === '/api/session' && req.method === 'GET') { reply(res,200,{csrf:session.csrf,user:publicUser(user)});return; }
+        if (url.pathname === '/api/session' && req.method === 'GET') { reply(res,200,{csrf:session.csrf,user:publicUser(user),aiConfigured:classifier.enabled===true});return; }
         if (url.pathname === '/api/logout' && req.method === 'POST') { db.prepare('DELETE FROM user_sessions WHERE id=?').run(session.id);res.setHeader('Set-Cookie',cookie('',0));reply(res,200,{ok:true});return; }
         if (url.pathname === '/api/library' && req.method === 'GET') { reply(res,200,snapshot(user));return; }
         if (url.pathname === '/api/library' && req.method === 'PUT') {
@@ -165,6 +172,33 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
           const result=db.prepare('UPDATE user_libraries SET data=?,revision=revision+1 WHERE user_id=? AND revision=?').run(JSON.stringify({papers:data.papers,settings:data.settings}),user.id,data.revision);
           if (!result.changes) { reply(res,409,{error:'Your library changed on another device. The latest library was loaded; review and retry your edit.',library:snapshot(user)});return; }
           reply(res,200,snapshot(user));return;
+        }
+        if(url.pathname==='/api/ai'&&req.method==='GET'){reply(res,200,{configured:classifier.enabled===true,dailyLimit:aiUserDailyLimit});return;}
+        if(url.pathname==='/api/classify'&&req.method==='POST'){
+          if(!classifier.enabled)fail(503,'The owner must configure an OpenAI API key on the server first.');
+          const data=await readJSON(req,100000),library=snapshot(user);
+          if(!library.settings.autoCollections)fail(403,'Enable automatic collections in Settings first.');
+          if(typeof data?.title!=='string'||data.title.length>500||typeof data.abstract!=='string'||!data.abstract.trim()||data.abstract.length>20000)fail(400,'Add an abstract of at most 20,000 characters first.');
+          if(data.revision!==library.revision){reply(res,409,{error:'Your library changed. Review the latest library and try again.',library});return;}
+          if(aiPending.has(user.id)||aiPending.size>=2)fail(429,'A classification is already running. Try again shortly.');
+          const collections=[...new Set([...(library.settings.collections||[]),...library.papers.flatMap(p=>p.tags||[])])];
+          if(collections.length>1000)fail(400,'Too many collection names for automatic tagging.');
+          const day=new Date().toISOString().slice(0,10);
+          transaction(()=>{
+            const used=db.prepare('SELECT count FROM ai_usage WHERE user_id=? AND day=?').get(user.id,day)?.count||0;
+            const total=db.prepare('SELECT coalesce(sum(count),0) n FROM ai_usage WHERE day=?').get(day).n;
+            if(used>=aiUserDailyLimit||total>=aiDailyLimit)fail(429,'The daily automatic collection limit has been reached.');
+            db.prepare('DELETE FROM ai_usage WHERE day<?').run(day);
+            db.prepare('INSERT INTO ai_usage VALUES (?,?,1) ON CONFLICT(user_id,day) DO UPDATE SET count=count+1').run(user.id,day);
+          });
+          aiPending.add(user.id);
+          try{
+            const allowNew=library.settings.autoCreateCollections!==false;
+            let tags;try{tags=normalizeSuggestions(await classifier({title:data.title,abstract:data.abstract,collections,instructions:library.settings.collectionInstructions||'',allowNew}),collections,{allowNew})}catch{fail(502,'Automatic tagging failed. You can save the paper and choose tags manually.');}
+            if(!db.prepare('SELECT id FROM user_sessions WHERE id=? AND expires>?').get(session.id,Date.now())||!db.prepare('SELECT enabled FROM users WHERE id=?').get(user.id)?.enabled)fail(401,'Sign in to your library.');
+            const latest=snapshot(user);if(latest.revision!==library.revision){reply(res,409,{error:'Your library changed during classification. Review and try again.',library:latest});return;}
+            reply(res,200,{tags});return;
+          }finally{aiPending.delete(user.id)}
         }
         if(url.pathname==='/api/password'&&req.method==='POST'){
           const now=Date.now(),key='password:'+user.id;
@@ -229,7 +263,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.umask(0o077);
-  const server=createApp({origin:process.env.APP_ORIGIN,hash:process.env.FOLIO_PASSWORD_HASH,ownerName:process.env.FOLIO_OWNER_USERNAME || 'owner',dbPath:process.env.DB_PATH || './.runtime/folio.sqlite',allowHttp:process.env.ALLOW_LOCAL_HTTP==='1'});
+  const server=createApp({origin:process.env.APP_ORIGIN,hash:process.env.FOLIO_PASSWORD_HASH,ownerName:process.env.FOLIO_OWNER_USERNAME || 'owner',classifier:createClassifier({apiKey:process.env.OPENAI_API_KEY||'',model:process.env.OPENAI_MODEL||'gpt-4.1-mini'}),aiDailyLimit:Number(process.env.AI_DAILY_LIMIT||100),aiUserDailyLimit:Number(process.env.AI_USER_DAILY_LIMIT||20),dbPath:process.env.DB_PATH || './.runtime/folio.sqlite',allowHttp:process.env.ALLOW_LOCAL_HTTP==='1'});
   server.listen(Number(process.env.PORT || 3000),process.env.BIND || '127.0.0.1',()=>console.log('Folio server ready.'));
   for (const signal of ['SIGTERM','SIGINT']) process.on(signal,()=>server.close());
 }

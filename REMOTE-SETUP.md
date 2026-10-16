@@ -221,3 +221,28 @@ The upgrade keeps a legacy snapshot in SQLite for diagnosis, but the old server 
 PDF uploads, attachments, the built-in reader, and Google Drive integration have been removed. Citations retain their DOI, original source URL, tags, notes, flags, and venue metadata. Open paper follows the saved source link. PDF URLs remain valid external links; Folio does not download or save their contents.
 
 Database schema version 3 removes retired PDF-reference fields and Google settings from active libraries without changing account ownership. If an active library had those fields, its revision increases once so stale tabs cannot restore them. Existing Google Drive files and old browser IndexedDB files are not deleted; they are simply no longer accessed by Folio. There is no automatic conversion of a Drive file ID into a public paper URL. If a citation has no source URL, add one when editing the paper. Old JSON backups can still be imported; their attachment fields are ignored.
+
+## Abstract-based automatic collections
+
+Collections support paths such as `PQC/ML-DSA` and `PQC/ML-KEM`. The library shows their parent/child structure. Selecting `PQC` includes both branches. Renaming or removing a parent affects its entire branch; removing tags keeps citation records. Hyphens stay part of a name: use `/` between levels.
+
+Automatic tagging is optional and disabled by default for each user. It runs in the signed-in Node server, not the browser-storage preview. Add these optional values to the **VPS** `.env` with `nano .env`:
+
+```dotenv
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY
+OPENAI_MODEL=gpt-4.1-mini
+AI_DAILY_LIMIT=100
+AI_USER_DAILY_LIMIT=20
+```
+
+Keep `.env` private (`chmod 600 .env`) and outside Git. Enter the real key in the server terminal, not in chat or a source file. After committing and pushing the app changes, deploy with `bash deploy/update.sh` in `~/folio-git`. Compose supplies the key only to the backend. No API key is stored in users' libraries, JSON exports, or browser storage. The default model can be changed by the server owner to a compatible Responses API model that supports structured output.
+
+In **Settings → Automatic collections**, enable **Automatically tag new papers from their abstracts**. Keep **Create collections when no existing collection fits** selected to allow new paths, or clear it to use existing collections only. Optional classification preferences can describe your taxonomy, for example: “Use PQC as the parent; ML-DSA and ML-KEM are children.” Save these settings.
+
+Add a paper normally. Metadata lookup fills the abstract when supplied by the publisher or Crossref. Otherwise, paste the abstract in the new field. On saving, the classifier selects up to three tags, reuses existing paths where appropriate, creates missing collections, and preserves manually entered tags. Selecting **Suggest collections from abstract** lets you inspect or edit suggestions before saving. Saving an unchanged preview does not issue a second classification request. For an existing paper, open its details, add an abstract if necessary, select the suggestion button, then save changes. Discovery imports also use automatic classification when the result contains an abstract.
+
+Only the title, abstract, collection names, and classification preferences for the signed-in account are sent to OpenAI. Other users' libraries, reading notes, passwords, and keys are not part of the classifier input. The backend uses the [Responses API with structured output](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses) and requests `store: false`. API usage is billed to the OpenAI project that owns the server key, separately from ChatGPT. No real API request was used for the automated tests; they use an injected transport.
+
+The defaults allow 20 classification attempts per user per UTC day and 100 across the server. Counters persist across restarts. Failed provider attempts count toward the limit; rejected inputs and missing abstracts do not. The server permits at most two concurrent classifications and one per account. These are request-count limits, not a guaranteed monetary spending cap. Configure project billing controls separately if needed.
+
+A missing abstract, unavailable key, provider error, or daily limit does not prevent adding a citation: it saves with your manual tags and reports that automatic tagging was skipped or unavailable. You can retry from the paper details. Classification suggestions are editable, and no existing papers are reclassified automatically in bulk.

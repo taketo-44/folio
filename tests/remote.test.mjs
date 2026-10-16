@@ -102,3 +102,24 @@ context.fetch=()=>new Promise(resolve=>{deliver=resolve});
 const pendingLoad=run('loadRemote()');run('showLogin()');deliver(new Response(JSON.stringify({papers:[{title:'Old private paper'}],settings:{},revision:0,user:account})));
 await assert.rejects(pendingLoad,/account changed/);assert.equal(run('papers.length'),0);assert.equal(run('currentUser'),null);
 console.log('Multi-user UI: owner invitations, registration, password change, and stale response isolation passed.');
+
+// Opt-in AI tagging merges manual tags, persists new paths and abstracts, and fails without losing a citation.
+library={revision:0,papers:[],settings:{collections:['PQC']}};
+run("acceptRemote({user:{id:1,username:'owner',role:'owner'},revision:0,papers:[],settings:{collections:['PQC']}});csrf='test-token';aiConfigured=true;view='settings';renderRemoteSettings()");
+assert.match(node('#main').innerHTML,/Automatically tag new papers/);
+let autoCalls=0,autoFails=false;
+context.fetch=async(path,options={})=>{if(path==='/api/classify'){autoCalls++;const data=JSON.parse(options.body);assert.ok(data.abstract);assert.equal(data.revision,library.revision);return autoFails?new Response('{"error":"Provider unavailable"}',{status:502}):new Response('{"tags":["PQC/ML-DSA"]}')}return fetch(path,options)};
+node('#auto-collections-enabled').checked=true;node('#auto-collections-create').checked=true;node('#collection-instructions').value='Use PQC as a parent.';
+await node('#auto-collections-form').onsubmit({preventDefault(){}});
+assert.equal(library.settings.autoCollections,true);assert.equal(library.settings.collectionInstructions,'Use PQC as a parent.');
+run('addPaper()');fill();node('#paper-url').value='';node('#paper-tags').value='Manual tag';node('#paper-abstract').value='A lattice signature paper studying ML-DSA.';
+await run('submitAdd({preventDefault(){}})');assert.equal(autoCalls,1);assert.deepEqual(library.papers[0].tags,['Manual tag','PQC/ML-DSA']);assert.ok(library.settings.collections.includes('PQC/ML-DSA'));assert.equal(library.papers[0].abstract,node('#paper-abstract').value);
+// A user can preview the suggestions and then save without a second paid request.
+run('addPaper()');fill();node('#paper-url').value='';node('#paper-tags').value='';node('#paper-abstract').value='Another signature abstract.';
+await node('#paper-auto-tags').onclick();assert.match(node('#paper-tags').value,/PQC\/ML-DSA/);assert.equal(autoCalls,2);
+await run('submitAdd({preventDefault(){}})');assert.equal(autoCalls,2);assert.equal(library.papers.length,2);
+// Missing abstracts and provider failures preserve the paper and manual tag choices.
+run('addPaper()');fill();node('#paper-url').value='';node('#paper-abstract').value='';await run('submitAdd({preventDefault(){}})');assert.equal(autoCalls,2);assert.equal(library.papers.length,3);
+autoFails=true;run('addPaper()');fill();node('#paper-url').value='';node('#paper-abstract').value='An abstract while the provider is unavailable.';await run('submitAdd({preventDefault(){}})');assert.equal(library.papers.length,4);assert.deepEqual(library.papers[0].tags,['Crypto']);assert.match(node('#toast').textContent,/unavailable/);
+assert.ok(!JSON.stringify(library).includes('OPENAI_API_KEY'));
+console.log('Automatic collection settings, suggestion preview, no double billing, manual tags, and failed/missing abstract recovery passed.');

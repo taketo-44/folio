@@ -41,6 +41,7 @@ export function parseCitation(html, id, source = 'tches') {
     title, authors:(fields.get('citation_author') || (Array.isArray(embedded.authors)?embedded.authors.map(a=>text(a?.name)).filter(Boolean):[])).slice(0,100).join('; ').slice(0,5000),
     year:Number((first('citation_date') || first('citation_publication_date') || text(embedded.publicationDate)).match(/\b\d{4}\b/)?.[0]) || '',
     venue:venue.slice(0,1000),
+    abstract:decodeEntities((first('citation_abstract')||text(embedded.abstract)||html.match(/<h[1-6][^>]*>\s*Abstract\s*<\/h[1-6]>\s*<p[^>]*>([\s\S]*?)<\/p>/i)?.[1]||'').replace(/<[^>]*>/g,' ')).replace(/\s+/g,' ').trim().slice(0,20000),
     doi:/^10\.\d{4,9}\/\S{1,2000}$/i.test(doi) ? doi : '',
     url:source==='ieee'?'https://ieeexplore.ieee.org/document/'+id:source==='eprint'?'https://eprint.iacr.org/'+id:'https://tches.iacr.org/index.php/TCHES/article/view/'+id,
     metadataSource:source==='ieee'?'IEEE Xplore':source==='eprint'?'IACR ePrint':'TCHES', type:source==='eprint'?'posted-content':conference?'proceedings-article':'journal-article'

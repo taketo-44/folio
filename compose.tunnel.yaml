@@ -7,6 +7,10 @@ services:
     environment:
       APP_ORIGIN: http://127.0.0.1:3000
       ALLOW_LOCAL_HTTP: "1"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      AI_DAILY_LIMIT: ${AI_DAILY_LIMIT:-100}
+      AI_USER_DAILY_LIMIT: ${AI_USER_DAILY_LIMIT:-20}
       FOLIO_OWNER_USERNAME: ${FOLIO_OWNER_USERNAME:-owner}
       FOLIO_PASSWORD_HASH: ${FOLIO_PASSWORD_HASH:?Set a password hash in .env}
     ports:

@@ -341,3 +341,18 @@ const ieeeCrossref=JSON.parse(fs.readFileSync(new URL('fixtures/acm-tifs.json',i
 context.fetch=async url=>({ok:true,json:async()=>url.startsWith('/api/ieee')?ieeeMetadata:{message:ieeeCrossref}});
 assert.equal((await run("lookupPaper('https://ieeexplore.ieee.org/document/1234567')")).title,ieeeCrossref.title[0]);
 console.log('IEEE URL variants, metadata lookup/save, venue names, Crossref fallback, and duplicate detection passed.');
+
+// A collection path supplies implicit parent nodes and parent filtering includes descendants.
+run("papers=[{id:'dsa',title:'DSA paper',authors:'',venue:'',tags:['PQC/ML-DSA'],status:'unread',importance:'normal',notes:''},{id:'kem',title:'KEM paper',authors:'',venue:'',tags:['PQC/ML-KEM'],status:'read',importance:'normal',notes:''},{id:'other',title:'Other paper',authors:'',venue:'',tags:['Other'],status:'unread',importance:'normal',notes:''}];settings={collections:['PQC/ML-DSA','PQC/ML-KEM']};view='library';collection='PQC';query='';statusFilter='all';priorityFilter='all'");
+assert.equal(run('filtered().length'),2);
+assert.deepEqual(Array.from(run('collectionTree().filter(t=>t.path.startsWith("PQC")).map(t=>t.path)')),['PQC','PQC/ML-DSA','PQC/ML-KEM']);
+assert.equal(run('collectionCount("PQC")'),2);assert.equal(run('collectionTree().find(t=>t.path==="PQC/ML-DSA").depth'),1);
+assert.match(run('desktopTagFilters()'),/--collection-depth:1/);
+run("collection='PQC/ML-DSA'");assert.equal(run('filtered().length'),1);
+await run("changeCollection('PQC','Post-quantum')");assert.equal(run('collection'),'Post-quantum/ML-DSA');assert.equal(run('papers[0].tags[0]'),'Post-quantum/ML-DSA');
+await assert.rejects(run("changeCollection('Post-quantum','Post-quantum/Child')"),/own branch/);
+await run("changeCollection('Post-quantum',null)");assert.equal(run('papers.length'),3);assert.deepEqual(Array.from(run('papers[0].tags')),[]);assert.equal(run('papers[2].tags[0]'),'Other');assert.equal(run('collection'),'');
+assert.equal(run("abstractText('<jats:p>ML-DSA &amp; ML-KEM</jats:p>')"),'ML-DSA & ML-KEM');
+assert.equal(run("crossrefPaper({abstract:'<jats:p>Abstract text</jats:p>'}).abstract"),'Abstract text');
+assert.equal(run("validateBackup({version:1,papers:[{id:'abs',title:'Abstract paper',abstract:'Keep abstract'}]})[0].abstract"),'Keep abstract');
+console.log('Layered collections, subtree filtering/rename/removal, and abstract metadata passed.');

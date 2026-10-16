@@ -8,6 +8,7 @@ const fixture=`<meta name="citation_title" content="A Unified Framework for the 
 <meta name="citation_author" content="Moti Yung">
 <meta name="citation_journal_title" content="Cryptology ePrint Archive">
 <meta name="citation_publication_date" content="2006">
+<h5>Abstract</h5><p>A synthetic abstract about &amp; side channels.</p>
 <meta name="citation_pdf_url" content="https://eprint.iacr.org/2006/139.pdf">`;
 const paper=parseCitation(fixture,'2006/139','eprint');
 assert.equal(paper.title,'A Unified Framework for the Analysis of Side-Channel Key Recovery Attacks (extended version)');
@@ -17,7 +18,7 @@ assert.equal(paper.venue,'Cryptology ePrint Archive');
 assert.equal(paper.type,'posted-content');
 assert.equal(paper.metadataSource,'IACR ePrint');
 assert.equal(paper.url,'https://eprint.iacr.org/2006/139');
-assert.equal(paper.doi,'');
+assert.equal(paper.doi,'');assert.equal(paper.abstract,'A synthetic abstract about & side channels.');
 await assert.rejects(fetchArticle('../139','eprint'),/Invalid/);
 await assert.rejects(fetchArticle('https://127.0.0.1','eprint'),/Invalid/);
 await assert.rejects(fetchArticle('2006/139','unknown'),/Invalid/);

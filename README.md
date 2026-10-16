@@ -52,3 +52,5 @@ node tests/metadata.test.mjs
 Folio stores citation metadata and links only. PDF uploads, attachments, and Google Drive integration are removed.
 
 IEEE Xplore: paste a document or abstract link (or a stamp link containing `arnumber`) and choose Look up metadata. The server reads citation metadata from the fixed IEEE host and uses Crossref when a DOI is available. IEEE may block automated requests; in that case paste the DOI directly or save citation details manually. No PDF is downloaded or stored.
+
+Collections can be layered using paths such as `PQC/ML-DSA` and `PQC/ML-KEM`; parent filters include their descendants. Optional [abstract-based automatic tagging](REMOTE-SETUP.md#abstract-based-automatic-collections) reuses or creates collection paths. It requires a server-side OpenAI API key and per-user opt-in. Abstracts are saved as citation metadata; PDF storage remains disabled.
