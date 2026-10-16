@@ -10,7 +10,7 @@ function node(selector) {
 }
 const memory = new Map();
 const document={querySelector:node,querySelectorAll:()=>[],addEventListener(type,fn){this[type]=fn}};
-const context=vm.createContext({document,window:{addEventListener(){}},localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)},location:{hash:'',origin:'http://localhost'},crypto:webcrypto,URL,Blob,AbortSignal,structuredClone,setTimeout,clearTimeout,console,indexedDB:{open(){return {}}}});
+const context=vm.createContext({document,window:{addEventListener(){}},localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)},location:{hash:'',origin:'http://localhost'},crypto:webcrypto,URL,URLSearchParams,Blob,AbortSignal,structuredClone,setTimeout,clearTimeout,console,indexedDB:{open(){return {}}}});
 vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8'),context);
 const run=s=>vm.runInContext(s,context);
 
@@ -119,7 +119,9 @@ assert.equal(phone('filtered().length'),1);
 assert.match(node('#paper-results').innerHTML,/Goldreich/);
 assert.equal(node('#result-count').textContent,'1 paper');
 await tagClick('Lattices');
-assert.equal(phone('filtered().length'),0);
+assert.equal(phone('filtered().length'),1);
+assert.deepEqual(Array.from(phone('activeCollections()')),['Foundations','Lattices']);
+phone("collectionMatch='all'");assert.equal(phone('filtered().length'),0);phone("collectionMatch='any'");
 await tagClick('');
 assert.equal(phone('collection'),'');
 assert.equal(phone('filtered().length'),1);
@@ -316,3 +318,30 @@ const arxivCalls=[];context.fetch=async url=>{arxivCalls.push(url);return {ok:tr
 run('papers=[];addPaper()');node('#paper-url').value=arxivPaper.url;await run('lookupMetadata()');assert.equal(node('#paper-title').value,arxivPaper.title);assert.equal(node('#paper-abstract').value,arxivPaper.abstract);node('#paper-tags').value='';await run('submitAdd({preventDefault(){}})');assert.equal(run('papers.length'),1);assert.equal(run('papers[0].doi'),'');assert.equal(run('papers[0].metadataSource'),'arXiv');assert.match(run("citation(papers[0],'bibtex')"),/^@misc/);assert.deepEqual(arxivCalls,['/api/arxiv?id=1706.03762']);
 node('#paper-url').value='https://arxiv.org/pdf/1706.03762v2.pdf';await run('submitAdd({preventDefault(){}})');assert.equal(run('papers.length'),1);assert.match(node('#add-error').textContent,/already in your library/);
 console.log('arXiv URL lookup, DOI-free citation save, abstract capture, BibTeX and version duplicate protection passed.');
+
+// Multi-selection supports unions/intersections, keeps other search filters, and round-trips in URLs.
+run("papers=[{id:'one',title:'Signature',authors:'',venue:'',tags:['PQC/ML-DSA','Lattices'],status:'unread',importance:'high',notes:'Keep note'},{id:'two',title:'Encryption',authors:'',venue:'',tags:['PQC/ML-KEM'],status:'read',importance:'normal',notes:''},{id:'three',title:'Lattices',authors:'',venue:'',tags:['Lattices'],status:'unread',importance:'high',notes:''}];settings={collections:['PQC','Lattices']};navigate('library');toggleCollection('PQC');toggleCollection('Lattices')");
+assert.equal(run('filtered().length'),3);assert.deepEqual(Array.from(run('activeCollections()')),['PQC','Lattices']);
+run("collectionMatch='all';query='Signature';statusFilter='unread';priorityFilter='high';render()");assert.equal(run('filtered().length'),1);
+assert.match(node('#main').innerHTML,/2 collections/);assert.match(node('#main').innerHTML,/All selected collections/);
+const multiHash=run('collectionHash()');context.multiHash=multiHash;
+assert.deepEqual(Array.from(run('parseCollectionHash(multiHash).tags')),['PQC','Lattices']);assert.equal(run('parseCollectionHash(multiHash).match'),'all');
+assert.equal(run('restoreCollectionHash(multiHash)'),false);assert.equal(run('query'),'Signature');
+run("toggleCollection('')");assert.deepEqual(Array.from(run('activeCollections()')),[]);assert.equal(run('query'),'Signature');assert.equal(run('statusFilter'),'unread');assert.equal(run('priorityFilter'),'high');assert.equal(run('restoreCollectionHash(collectionHash())'),false);
+assert.equal(run("restoreCollectionHash('collection=PQC%2FML-DSA')"),true);assert.equal(run('collection'),'PQC/ML-DSA');
+assert.deepEqual(Array.from(run("parseCollectionHash('collections=not-json').tags")),[]);
+run("navigate('queue');toggleCollection('PQC');toggleCollection('Lattices')");assert.equal(run('filtered().length'),2);assert.equal(run('parseCollectionHash(collectionHash()).view'),'queue');
+run("renderPhoneLibrary()");assert.match(node('#main').innerHTML,/id="collection-match"/);assert.match(node('#main').innerHTML,/aria-pressed="true"/);
+// Move a branch to a new parent and then back to the top level; selected paths follow the move.
+run("view='library';query='';statusFilter='all';priorityFilter='all';settings={collections:['PQC','Signatures','Other']};papers=[{id:'root',title:'Root',authors:'',venue:'',tags:['PQC/ML-DSA'],status:'unread',importance:'normal',notes:'Keep note'},{id:'child',title:'Child',authors:'',venue:'',tags:['PQC/ML-DSA/Implementations','Other'],status:'unread',importance:'normal',notes:''}];setCollectionFilters(['PQC/ML-DSA','Other'])");
+await run("moveCollection('PQC/ML-DSA','Signatures')");assert.equal(run('papers[1].tags[0]'),'Signatures/ML-DSA/Implementations');assert.deepEqual(Array.from(run('activeCollections()')),['Signatures/ML-DSA','Other']);assert.equal(run('papers[0].notes'),'Keep note');
+await assert.rejects(run("moveCollection('Signatures','Signatures/ML-DSA')"),/own branch/);
+await assert.rejects(run("moveCollection('Signatures/ML-DSA','Does not exist')"),/destination/);
+await run("moveCollection('Signatures/ML-DSA','')");assert.equal(run('papers[0].tags[0]'),'ML-DSA');assert.equal(run('papers[1].tags[0]'),'ML-DSA/Implementations');
+run("settings.collections.push('PQC/ML-DSA');manageCollections()");assert.match(node('#modal-content').innerHTML,/data-move-tag="ML-DSA"/);
+run("moveCollectionDialog('ML-DSA')");assert.match(node('#modal-content').innerHTML,/Top level/);assert.doesNotMatch(node('#modal-content').innerHTML,/<option value="ML-DSA\/Implementations"/);
+node('#move-collection-parent').value='PQC';node('#move-collection-parent').onchange();assert.equal(node('#move-merge-warning').hidden,false);
+await node('#move-collection-form').onsubmit({preventDefault(){}});assert.match(node('#move-collection-error').textContent,/Confirm the merge/);assert.equal(run('papers[0].tags[0]'),'ML-DSA');
+node('#move-merge-confirm').checked=true;await node('#move-collection-form').onsubmit({preventDefault(){}});assert.equal(run('papers[0].tags[0]'),'PQC/ML-DSA');assert.equal(run('papers[1].tags[0]'),'PQC/ML-DSA/Implementations');assert.deepEqual(Array.from(run('activeCollections()')),['PQC/ML-DSA','Other']);
+assert.equal(JSON.parse(memory.get('folio-library-v1'))[0].tags[0],'PQC/ML-DSA');
+console.log('Multiple collection filters, any/all matching, hash links, branch moves, cycle guards, merge confirmation, and persistence passed.');

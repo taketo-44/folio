@@ -22,7 +22,7 @@ const fetch=async(path,options={})=>{
   throw new Error('Unexpected request: '+path);
 };
 const timers=[];
-const context=vm.createContext({document:{querySelector:node,querySelectorAll:()=>[],addEventListener(type,fn){this[type]=fn}},window:{FOLIO_REMOTE:true,addEventListener(){}},localStorage:{getItem(){return null},setItem(){localWrites++}},indexedDB:{open(){throw new Error('Remote mode must not open a local PDF database')}},location:{hash:'',origin:'https://papers.example.com'},crypto:webcrypto,URL,Blob,Response,AbortSignal,structuredClone,fetch,setTimeout(fn){timers.push(fn);return timers.length},clearTimeout(){},console});
+const context=vm.createContext({document:{querySelector:node,querySelectorAll:()=>[],addEventListener(type,fn){this[type]=fn}},window:{FOLIO_REMOTE:true,addEventListener(){}},localStorage:{getItem(){return null},setItem(){localWrites++}},indexedDB:{open(){throw new Error('Remote mode must not open a local PDF database')}},location:{hash:'',origin:'https://papers.example.com'},crypto:webcrypto,URL,URLSearchParams,Blob,Response,AbortSignal,structuredClone,fetch,setTimeout(fn){timers.push(fn);return timers.length},clearTimeout(){},console});
 vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8'),context);
 const run=s=>vm.runInContext(s,context);
 await run('startRemote()');
@@ -123,3 +123,11 @@ run('addPaper()');fill();node('#paper-url').value='';node('#paper-abstract').val
 autoFails=true;run('addPaper()');fill();node('#paper-url').value='';node('#paper-abstract').value='An abstract while the provider is unavailable.';await run('submitAdd({preventDefault(){}})');assert.equal(library.papers.length,4);assert.deepEqual(library.papers[0].tags,['Crypto']);assert.match(node('#toast').textContent,/unavailable/);
 assert.ok(!JSON.stringify(library).includes('OPENAI_API_KEY'));
 console.log('Automatic collection settings, suggestion preview, no double billing, manual tags, and failed/missing abstract recovery passed.');
+
+// A branch move updates tags/settings in one save, and failed saves preserve selection and data.
+library={revision:0,papers:[{id:'move-a',title:'Move A',authors:'',venue:'',tags:['ML-DSA'],status:'unread',importance:'normal',notes:'Keep notes'},{id:'move-b',title:'Move B',authors:'',venue:'',tags:['ML-DSA/Implementations','Other'],status:'unread',importance:'normal',notes:''}],settings:{collections:['ML-DSA','PQC','Other']}};
+context.moveSnapshot={...library,user:account};run("acceptRemote(moveSnapshot);view='library';setCollectionFilters(['ML-DSA','Other']);csrf='test-token'");
+failSave=true;await assert.rejects(run("moveCollection('ML-DSA','PQC')"),/Server unavailable/);assert.equal(run('papers[0].tags[0]'),'ML-DSA');assert.deepEqual(Array.from(run('activeCollections()')),['ML-DSA','Other']);
+failSave=false;const beforeMove=putCount();await run("moveCollection('ML-DSA','PQC')");assert.equal(putCount(),beforeMove+1);assert.equal(library.papers[0].tags[0],'PQC/ML-DSA');assert.equal(library.papers[1].tags[0],'PQC/ML-DSA/Implementations');assert.equal(library.papers[0].notes,'Keep notes');assert.ok(library.settings.collections.includes('PQC/ML-DSA'));assert.deepEqual(Array.from(run('activeCollections()')),['PQC/ML-DSA','Other']);
+run('showLogin()');assert.deepEqual(Array.from(run('activeCollections()')),[]);
+console.log('Branch moves: atomic server save, failure recovery, selection updates, and sign-out clearing passed.');
