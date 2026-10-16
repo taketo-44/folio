@@ -1,4 +1,6 @@
+import {normalizeImportance} from '../dist/importance.js';
 import assert from 'node:assert/strict';
+import {createStarterLibrary} from '../dist/starter-papers.js';
 import vm from 'node:vm';
 import fs from 'node:fs';
 import { webcrypto } from 'node:crypto';
@@ -22,8 +24,8 @@ const fetch=async(path,options={})=>{
   throw new Error('Unexpected request: '+path);
 };
 const timers=[];
-const context=vm.createContext({document:{querySelector:node,querySelectorAll:()=>[],addEventListener(type,fn){this[type]=fn}},window:{FOLIO_REMOTE:true,addEventListener(){}},localStorage:{getItem(){return null},setItem(){localWrites++}},indexedDB:{open(){throw new Error('Remote mode must not open a local PDF database')}},location:{hash:'',origin:'https://papers.example.com'},crypto:webcrypto,URL,URLSearchParams,Blob,Response,AbortSignal,structuredClone,fetch,setTimeout(fn){timers.push(fn);return timers.length},clearTimeout(){},console});
-vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8'),context);
+const context=vm.createContext({normalizeImportance,createStarterLibrary,document:{querySelector:node,querySelectorAll:()=>[],addEventListener(type,fn){this[type]=fn}},window:{FOLIO_REMOTE:true,addEventListener(){}},localStorage:{getItem(){return null},setItem(){localWrites++}},indexedDB:{open(){throw new Error('Remote mode must not open a local PDF database')}},location:{hash:'',origin:'https://papers.example.com'},crypto:webcrypto,URL,URLSearchParams,Blob,Response,AbortSignal,structuredClone,fetch,setTimeout(fn){timers.push(fn);return timers.length},clearTimeout(){},console});
+vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,''),context);
 const run=s=>vm.runInContext(s,context);
 await run('startRemote()');
 assert.equal(run('papers.length'),0);

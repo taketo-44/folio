@@ -30,12 +30,15 @@ try{
   const login=await request('/api/login',{method:'POST',body:JSON.stringify({password:'test password at least sixteen'})});
   assert.equal(login.status,200);assert.match(login.headers.get('set-cookie'),/HttpOnly; SameSite=Strict/);
   cookie=login.headers.get('set-cookie').split(';')[0];csrf=(await login.json()).csrf;
-  const initial=await (await request('/api/library')).json();assert.deepEqual(initial.papers,[]);
+  const initial=await (await request('/api/library')).json();assert.equal(initial.papers.length,5);assert.ok(initial.papers.every(p=>p.sample&&p.status==='unread'));
+  const starterAsset=await request('/starter-papers.js');assert.equal(starterAsset.status,200);assert.match(starterAsset.headers.get('content-type'),/javascript/);
   const paper={id:'p1',title:'A paper',authors:'An Author',tags:['Cryptography'],status:'unread',importance:'high',notes:'My notes',drivePdfId:'drive-file-1',pdfId:'device-cache',added:1,updated:1};
   const payload={revision:0,papers:[paper],settings:{collections:['Cryptography'],clientId:'123.apps.googleusercontent.com'}};
   assert.equal((await request('/api/library',{method:'PUT',headers:{'X-CSRF-Token':'bad'},body:JSON.stringify(payload)})).status,403);
   const saved=await request('/api/library',{method:'PUT',body:JSON.stringify(payload)});assert.equal(saved.status,200);
   const data=await saved.json();assert.equal(data.revision,1);assert.equal(data.papers[0].drivePdfId,undefined);assert.equal(data.settings.clientId,undefined);assert.equal(data.papers[0].pdfId,undefined);
+  assert.equal(data.papers[0].importance,5,'legacy high becomes five stars');
+  for(const importance of [-1,6,2.5,'4',null])assert.equal((await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,revision:1,papers:[{...paper,importance}]})})).status,400);
   const conflict=await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,papers:[]})});assert.equal(conflict.status,409);assert.equal((await conflict.json()).library.papers.length,1);
   assert.equal((await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,revision:1,papers:[{...paper,title:''}]})})).status,400);
   assert.equal((await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,revision:1,papers:[{...paper,url:'javascript:alert(1)'}]})})).status,400);
@@ -50,6 +53,7 @@ try{
   const badHost=await new Promise((resolve,reject)=>{const r=http.get(origin+'/',{headers:{Host:'evil.example'}},res=>{res.resume();resolve(res.statusCode)});r.on('error',reject)});assert.equal(badHost,403);
   await close();await open(port);
   const restored=await(await request('/api/library')).json();assert.equal(restored.papers[0].notes,'My notes');assert.equal(restored.revision,1);
+  let rated=restored;for(const importance of [0,2,5]){const r=await request('/api/library',{method:'PUT',body:JSON.stringify({...rated,papers:[{...paper,importance}]})});assert.equal(r.status,200);rated=await r.json();assert.equal(rated.papers[0].importance,importance);assert.equal((await(await request('/api/library')).json()).papers[0].importance,importance)}
   assert.equal((await request('/api/logout',{method:'POST',body:'{}'})).status,200);
   assert.equal((await request('/api/library')).status,401);
   for(let i=0;i<10;i++)assert.equal((await request('/api/login',{method:'POST',body:'{"password":"bad"}'})).status,401);

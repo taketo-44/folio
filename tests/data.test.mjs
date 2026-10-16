@@ -1,4 +1,6 @@
+import {normalizeImportance} from '../dist/importance.js';
 import assert from 'node:assert/strict';
+import {seeds as legacySeeds} from './fixtures/legacy-seeds.mjs';
 import vm from 'node:vm';
 import fs from 'node:fs';
 import { webcrypto } from 'node:crypto';
@@ -10,9 +12,10 @@ function node(selector) {
 }
 const memory = new Map();
 const document={querySelector:node,querySelectorAll:()=>[],addEventListener(type,fn){this[type]=fn}};
-const context=vm.createContext({document,window:{addEventListener(){}},localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)},location:{hash:'',origin:'http://localhost'},crypto:webcrypto,URL,URLSearchParams,Blob,AbortSignal,structuredClone,setTimeout,clearTimeout,console,indexedDB:{open(){return {}}}});
-vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8'),context);
+const context=vm.createContext({normalizeImportance,createStarterLibrary:()=>({papers:structuredClone(legacySeeds),settings:{}}),document,window:{addEventListener(){}},localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)},location:{hash:'',origin:'http://localhost'},crypto:webcrypto,URL,URLSearchParams,Blob,AbortSignal,structuredClone,setTimeout,clearTimeout,console,indexedDB:{open(){return {}}}});
+vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,''),context);
 const run=s=>vm.runInContext(s,context);
+context.localClick=document.click;
 
 assert.equal(run('papers.length'),8);
 assert.equal(run('filtered().length'),8);
@@ -87,8 +90,8 @@ console.log('Passed: filtering, citations, URL safety, backup validation, merge 
 // The phone screen uses the same paper filters and switches back on wider screens.
 let viewportChanged;
 const media={matches:true,addEventListener(type,fn){viewportChanged=fn}};
-const phoneContext=vm.createContext({...context,window:{matchMedia:()=>media,addEventListener(){}},localStorage:{getItem:()=>null,setItem(){}},location:{hash:'',origin:'http://localhost'}});
-vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8'),phoneContext);
+const phoneContext=vm.createContext({normalizeImportance,...context,window:{matchMedia:()=>media,addEventListener(){}},localStorage:{getItem:()=>null,setItem(){}},location:{hash:'',origin:'http://localhost'}});
+vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,''),phoneContext);
 const phone=s=>vm.runInContext(s,phoneContext);
 assert.match(node('#main').innerHTML,/Your reading shelf/);
 assert.equal(phone('filtered().length'),8);
@@ -442,3 +445,24 @@ assert.deepEqual(Array.from(run('activeCollections()')),['PQC','Lattices']);asse
 run('chooseCollections()');node('#collection-picker-clear').onclick();run('close()');assert.equal(run('activeCollections().length'),2);
 run('chooseCollections()');node('#collection-picker-clear').onclick();node('#collection-picker-apply').onclick();assert.equal(run('activeCollections().length'),0);assert.equal(run('collectionMatch'),'any');
 console.log('Compact collection picker: draft/apply/cancel, path search, multi-selection and filter preservation passed.');
+
+// Rating controls choose the clicked star exactly, including clearing to zero.
+for(const [old,value] of [['low',0],['normal',3],['high',5]])assert.equal(run(`normalizeImportance(${JSON.stringify(old)})`),value);
+run("papers=[{id:'stars',title:'Star paper',authors:'',venue:'',tags:[],status:'unread',importance:'normal',notes:''}];view='library';query='';statusFilter='all';priorityFilter='all';setCollectionFilters([]);render()");
+const rate=async value=>run(`localClick({target:{closest:()=>({dataset:{ratePaper:'stars',ratingValue:'${value}'},id:'',hasAttribute:()=>false})}})`);
+await rate(4);assert.equal(run('papers[0].importance'),4);assert.equal(JSON.parse(memory.get('folio-library-v1'))[0].importance,4);
+assert.match(run("card(papers[0])"),/Set 4 stars/);run("view='favorites'");assert.equal(run('filtered().length'),1);
+await rate(0);assert.equal(run('papers[0].importance'),0);assert.equal(run('filtered().length'),0);
+run("view='library';addPaper()");assert.equal(node('#paper-priority').value,3);
+await run("localClick({target:{closest:()=>({dataset:{ratingInput:'paper-priority',ratingValue:'2'},id:'',hasAttribute:()=>false})}})");assert.equal(node('#paper-priority').value,2);assert.equal(run("readRating('paper-priority')"),2);
+run("papers=[{id:'zero',importance:0,added:1},{id:'two',importance:2,added:1},{id:'five',importance:5,added:1}].map(p=>({...p,title:p.id,authors:'',venue:'',tags:[],status:'unread'}));sort='importance';priorityFilter='all'");assert.deepEqual(Array.from(run('filtered().map(p=>p.importance)')),[5,2,0]);run("priorityFilter='0'");assert.deepEqual(Array.from(run('filtered().map(p=>p.id)')),['zero']);
+for(const value of [0,1,2,3,4,5,'low','normal','high']){context.ratingBackup={version:1,papers:[{id:'rated',title:'Rated',importance:value}]};assert.equal(run('validateBackup(ratingBackup)[0].importance'),normalizeImportance(value))}
+console.log('Importance stars: exact click selection, zero, default 3, legacy mapping, favorites, filters, sorting and backup round-trips passed.');
+
+// ePrint uses zero-padded numbers, including /050 and /001.
+for(const url of ['https://eprint.iacr.org/2023/050','https://eprint.iacr.org/2023/050.pdf','https://ia.cr/2023/050','eprint.iacr.org/2023/050'])assert.equal(run(`getEprintId(${JSON.stringify(url)})`),'2023/050');
+assert.equal(run("getEprintId('https://eprint.iacr.org/2023/001')"),'2023/001');
+for(const suffix of ['0','000','0000','-050','050evil','12345678901'])assert.equal(run(`getEprintId('https://eprint.iacr.org/2023/${suffix}')`),'');
+const leadingCalls=[];context.fetch=async url=>{leadingCalls.push(url);return {ok:true,json:async()=>({title:'Exploiting Intermediate Value Leakage in Dilithium: A Template-Based Approach',authors:'Alexandre Berzati; Andersson Calle Viera; Maya Chartouny; Steven Madec; Damien Vergnaud; David Vigilant',year:2023,venue:'Cryptology ePrint Archive',abstract:'A synthetic abstract for the leading-zero regression.',doi:'',metadataSource:'IACR ePrint',type:'posted-content'})}};
+run("papers=[];settings={};view='library';addMode='url';addPaper()");node('#paper-url').value='https://eprint.iacr.org/2023/050';await run('lookupMetadata()');assert.equal(node('#paper-title').value,'Exploiting Intermediate Value Leakage in Dilithium: A Template-Based Approach');node('#paper-tags').value='PQC/ML-DSA';node('#paper-status').value='unread';await run('submitAdd({preventDefault(){}})');assert.equal(run('papers.length'),1);assert.equal(run('papers[0].url'),'https://eprint.iacr.org/2023/050');assert.deepEqual(leadingCalls,['/api/eprint?id=2023%2F050']);
+console.log('Leading-zero ePrint URLs: recognition, lookup and citation save passed.');

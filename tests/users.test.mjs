@@ -28,8 +28,8 @@ async function library(client){const r=await request(client,'/api/library');asse
 try{
  const port=await open();
  assert.equal(await login(owner,'OWNER',password),200);
- const migrated=await library(owner);assert.equal(migrated.revision,8);assert.equal(migrated.papers[0].notes,'Owner notes');assert.deepEqual(migrated.settings.collections,['Owner tag']);assert.equal(migrated.user.role,'owner');
- const inspection=new DatabaseSync(dbPath);assert.equal(inspection.prepare('SELECT count(*) n FROM sessions').get().n,0);assert.equal(inspection.prepare('PRAGMA user_version').get().user_version,3);
+ const migrated=await library(owner);assert.equal(migrated.revision,8);assert.equal(migrated.papers[0].importance,3);assert.equal(migrated.papers[0].notes,'Owner notes');assert.deepEqual(migrated.settings.collections,['Owner tag']);assert.equal(migrated.user.role,'owner');
+ const inspection=new DatabaseSync(dbPath);assert.equal(inspection.prepare('SELECT count(*) n FROM sessions').get().n,0);assert.equal(inspection.prepare('PRAGMA user_version').get().user_version,4);
  assert.equal((await request({},'/api/admin/invitations','POST',{})).status,401);
  assert.equal((await request(owner,'/api/admin/invitations','POST',{}, {'X-CSRF-Token':'bad'})).status,403);
  assert.equal((await request(owner,'/api/admin/invitations','POST',{}, {Origin:'https://elsewhere.example'})).status,403);
@@ -39,16 +39,17 @@ try{
  assert.equal(await register({},first.secret,'alice','short'),400);
  assert.equal(await register(member,first.secret,'Alice'),201);
  assert.equal(member.user.username,'alice');assert.equal(member.user.role,'member');
- const reused={};assert.equal(await register(reused,first.secret,'repeat-user'),201,'one invitation supports multiple sign-ups');assert.deepEqual((await library(reused)).papers,[]);
+ const reused={};assert.equal(await register(reused,first.secret,'repeat-user'),201,'one invitation supports multiple sign-ups');assert.equal((await library(reused)).papers.length,5);
  assert.equal((await request(owner,'/api/admin/invitations/'+first.id,'DELETE',{})).status,200);assert.equal(await register({},first.secret,'repeat-again'),400,'revocation stops future sign-ups');assert.equal((await request(reused,'/api/library')).status,200,'revocation preserves accounts already created');
- const empty=await library(member);assert.deepEqual(empty.papers,[]);assert.deepEqual(empty.settings,{});assert.equal(empty.revision,0);
+ const reusableLibrary=await library(reused);assert.equal((await request(reused,'/api/library','PUT',{...reusableLibrary,papers:[],settings:{}})).status,200);
+ const empty=await library(member);assert.equal(empty.papers.length,5);assert.ok(empty.papers.every(p=>p.sample&&p.tags.length));assert.equal(empty.papers.filter(p=>p.abstract).length,2);assert.deepEqual(empty.settings,{});assert.equal(empty.revision,0);
  for(const path of ['/api/admin/users','/api/admin/invitations'])assert.equal((await request(member,path)).status,403);
  assert.equal((await request(member,'/api/admin/invitations','POST',{})).status,403);
  assert.equal((await request(owner,'/api/admin/users/'+owner.user.id,'PATCH',{enabled:false})).status,400);
  const second=await invite();assert.equal(await register({},second.secret,'alice'),409);assert.equal(await register(other,second.secret,'bob'),201);
  const memberPaper={...paper,title:'Alice private paper',tags:['Alice tag'],notes:'Alice notes',drivePdfId:'alice-drive'};
  const save=await request(member,'/api/library','PUT',{...empty,user_id:owner.user.id,papers:[memberPaper],settings:{collections:['Alice tag']}});assert.equal(save.status,200);
- assert.equal((await library(owner)).papers[0].notes,'Owner notes');assert.deepEqual((await library(other)).papers,[]);
+ assert.equal((await library(owner)).papers[0].notes,'Owner notes');assert.equal((await library(other)).papers.length,5);assert.ok((await library(other)).papers.every(p=>p.sample));
  assert.equal((await library(member)).papers[0].drivePdfId,undefined);
  assert.equal((await request(member,'/api/library?user_id='+owner.user.id)).status,200);assert.equal((await (await request(member,'/api/library?user_id='+owner.user.id)).json()).papers[0].title,'Alice private paper');
  const stale=await request(member,'/api/library','PUT',{revision:0,papers:[],settings:{}});assert.equal(stale.status,409);const staleData=await stale.json();assert.equal(staleData.library.user.id,member.user.id);assert.equal(staleData.library.papers[0].notes,'Alice notes');
@@ -68,12 +69,12 @@ try{
  assert.equal((await request(member,'/api/password','POST',{currentPassword:memberPassword,password:'short'})).status,400);
  const changed=await request(member,'/api/password','POST',{currentPassword:memberPassword,password:freshPassword});assert.equal(changed.status,200);member.cookie=changed.headers.get('set-cookie').split(';')[0];member.csrf=(await changed.json()).csrf;
  assert.equal((await request(oldSession,'/api/library')).status,401);assert.equal(await login({},'alice',memberPassword),401);assert.equal(await login(member,'alice',freshPassword),200);
- inspection.prepare('UPDATE user_libraries SET data=? WHERE user_id=?').run(JSON.stringify({papers:[{...paper,url:'https://example.com/paper',drivePdfId:'retired-drive',pdfName:'retired.pdf'}],settings:{collections:['Owner tag'],clientId:'123.apps.googleusercontent.com',lastBackup:1}}),other.user.id);
- inspection.exec('PRAGMA user_version=2');
+ inspection.prepare('UPDATE user_libraries SET data=? WHERE user_id=?').run(JSON.stringify({papers:[{...paper,importance:'low',url:'https://example.com/paper',drivePdfId:'retired-drive',pdfName:'retired.pdf'},{...paper,id:'normal',importance:'normal'},{...paper,id:'high',importance:'high'}],settings:{collections:['Owner tag'],clientId:'123.apps.googleusercontent.com',lastBackup:1}}),other.user.id);
+ inspection.exec('PRAGMA user_version=3');
  inspection.close();await close();await open(port,passwordHash('different bootstrap password sixteen'));
- const citationOnly=await library(other);assert.equal(citationOnly.papers[0].url,'https://example.com/paper');assert.equal(citationOnly.papers[0].notes,'Owner notes');assert.equal(citationOnly.papers[0].drivePdfId,undefined);assert.equal(citationOnly.papers[0].pdfName,undefined);assert.deepEqual(citationOnly.settings,{collections:['Owner tag']});assert.equal(citationOnly.revision,1);
+ const citationOnly=await library(other);assert.equal(citationOnly.papers[0].url,'https://example.com/paper');assert.equal(citationOnly.papers[0].notes,'Owner notes');assert.equal(citationOnly.papers[0].drivePdfId,undefined);assert.equal(citationOnly.papers[0].pdfName,undefined);assert.deepEqual(citationOnly.settings,{collections:['Owner tag']});assert.equal(citationOnly.revision,1);assert.deepEqual(citationOnly.papers.map(p=>p.importance),[0,3,5]);
  
- assert.equal((await library(owner)).papers[0].notes,'Owner notes');assert.equal((await library(member)).papers[0].notes,'Alice notes');assert.equal(await login({},'owner',password),200,'bootstrap environment must not reset existing passwords');
+ assert.equal((await library(owner)).papers[0].notes,'Owner notes');assert.equal((await library(member)).papers[0].notes,'Alice notes');assert.equal(await login({},'owner',password),200,'bootstrap environment must not reset existing passwords');assert.deepEqual((await library(reused)).papers,[],'removed examples must not reappear after restart');
  assert.equal(await register({},pending.secret,'carol'),201,'invitation survives restart');
  assert.throws(()=>resetPassword(dbPath,'owner','short'),/16/);
  resetPassword(dbPath,'owner','recovered owner password sixteen');

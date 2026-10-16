@@ -44,7 +44,7 @@ export function parseCitation(html, id, source = 'eprint') {
 }
 
 export function fetchArticle(id, source = 'eprint') {
-  const valid=source==='arxiv'?isArxivId(id):source==='eprint'&&/^(?:19|20)\d{2}\/[1-9]\d{0,9}$/.test(id);
+  const valid=source==='arxiv'?isArxivId(id):source==='eprint'&&/^(?:19|20)\d{2}\/(?!0+$)\d{1,10}$/.test(id);
   if(!valid)return Promise.reject(new Error('Invalid publisher paper identifier.'));
   const url=source==='arxiv'?'https://export.arxiv.org/api/query?id_list='+encodeURIComponent(id):'https://eprint.iacr.org/'+id;
   return new Promise((resolve,reject) => {
@@ -90,7 +90,7 @@ export function createMetadataServer(loadArticle = fetchArticle, allowedOrigin) 
       const id = url.searchParams.get('id');
       if (!['/api/eprint','/api/arxiv'].includes(url.pathname)) { reply(res,404,{error:'Not found.'}); return; }
       const source=url.pathname==='/api/arxiv'?'arxiv':'eprint';
-      const valid=source==='arxiv'?isArxivId(id):/^(?:19|20)\d{2}\/[1-9]\d{0,9}$/.test(id || '');
+      const valid=source==='arxiv'?isArxivId(id):/^(?:19|20)\d{2}\/(?!0+$)\d{1,10}$/.test(id || '');
       if (!valid || [...url.searchParams.keys()].some(k=>k!=='id') || url.searchParams.getAll('id').length!==1) {
         reply(res,400,{error:'Enter a valid '+(source==='arxiv'?'arXiv':'IACR ePrint')+' paper link.'}); return;
       }

@@ -32,7 +32,7 @@ async function request(client,path,method='GET',data,headers={}){return fetch(or
 const owner={},member={};
 async function signIn(client,path,data){const r=await request({},path,'POST',data);assert.ok(r.ok);client.cookie=r.headers.get('set-cookie').split(';')[0];client.csrf=(await r.json()).csrf;}
 async function library(client){return (await request(client,'/api/library')).json()}
-async function save(client,settings){const current=await library(client);const r=await request(client,'/api/library','PUT',{...current,settings});assert.equal(r.status,200);return r.json()}
+async function save(client,settings){const current=await library(client);const r=await request(client,'/api/library','PUT',{...current,papers:[],settings});assert.equal(r.status,200);return r.json()}
 try{
  const port=await open();await signIn(owner,'/api/login',{username:'owner',password:'owner test password at least sixteen'});
  assert.equal((await request({},'/api/classify','POST',{})).status,401);

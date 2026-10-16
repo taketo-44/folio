@@ -30,7 +30,10 @@ try{
   const response=await fetch(origin+'/api/eprint?id=2006%2F139');
   assert.equal(response.status,200);assert.deepEqual(await response.json(),paper);
   assert.equal((await fetch(origin+'/api/eprint?id=2006%2F139')).status,200);assert.equal(calls,1);
-  for(const query of ['id=139','id=2006/0','id=2006/139.pdf','id=2006/../139','id=2006/139&url=https://evil.test','id=2006/139&id=2020/1','id=https://127.0.0.1','id=2006/139%0A'])assert.equal((await fetch(origin+'/api/eprint?'+query)).status,400);
+  const padded=createMetadataServer(async(id,source)=>{assert.equal(id,'2023/050');assert.equal(source,'eprint');return fixture.replace('A Unified Framework for the Analysis of Side-Channel Key Recovery Attacks (extended version)','Exploiting Intermediate Value Leakage in Dilithium: A Template-Based Approach')});
+  await new Promise(resolve=>padded.listen(0,'127.0.0.1',resolve));
+  try{const response=await fetch('http://127.0.0.1:'+padded.address().port+'/api/eprint?id=2023%2F050');assert.equal(response.status,200);const data=await response.json();assert.equal(data.url,'https://eprint.iacr.org/2023/050');assert.match(data.title,/Dilithium/)}finally{padded.closeAllConnections();await new Promise(resolve=>padded.close(resolve))}
+  for(const query of ['id=139','id=2006/0','id=2023/000','id=2023/0000','id=2023/12345678901','id=2006/139.pdf','id=2006/../139','id=2006/139&url=https://evil.test','id=2006/139&id=2020/1','id=https://127.0.0.1','id=2006/139%0A'])assert.equal((await fetch(origin+'/api/eprint?'+query)).status,400);
   assert.equal((await fetch(origin+'/api/eprint?id=2006/139',{headers:{Origin:'https://evil.test'}})).status,403);
   assert.equal((await fetch(origin+'/api/eprint?id=2006/139',{method:'POST'})).status,405);
   assert.equal(calls,1);

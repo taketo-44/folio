@@ -1,4 +1,6 @@
 import http from 'node:http';
+import {normalizeImportance} from '../dist/importance.js';
+import {createStarterLibrary} from '../dist/starter-papers.js';
 import {createClassifier,normalizeSuggestions} from './classify.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
@@ -25,7 +27,8 @@ function validate(data) {
   for (const p of data.papers) {
     if (!p || typeof p.id !== 'string' || !/^[\w-]{1,100}$/.test(p.id) || ids.has(p.id) || typeof p.title !== 'string' || !p.title.trim() || p.title.length > 500) fail(400, 'Invalid paper ID or title.');
     ids.add(p.id);
-    if (!['read','reading','unread'].includes(p.status) || !['high','normal','low'].includes(p.importance) || !Array.isArray(p.tags) || p.tags.length > 50 || p.tags.some(t => typeof t !== 'string' || t.length > 200)) fail(400, 'Invalid paper flags or tags.');
+    if (!['read','reading','unread'].includes(p.status) || (!(Number.isInteger(p.importance)&&p.importance>=0&&p.importance<=5)&&!['high','normal','low'].includes(p.importance)) || !Array.isArray(p.tags) || p.tags.length > 50 || p.tags.some(t => typeof t !== 'string' || t.length > 200)) fail(400, 'Invalid paper flags or tags.');
+    p.importance=normalizeImportance(p.importance);
     for (const [field,max] of Object.entries({authors:5000,venue:1000,notes:100000,doi:2000,url:4000,rank:100,metricType:100,metricSource:4000,type:100,metadataSource:100,abstract:20000})) {
       if (p[field] !== undefined && (typeof p[field] !== 'string' || p[field].length > max)) fail(400, 'Invalid '+field+'.');
     }
@@ -58,7 +61,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
   mkdirSync(dirname(dbPath), {recursive:true, mode:0o700});
   const db = new DatabaseSync(dbPath);
   db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;');
-  if (db.prepare('PRAGMA user_version').get().user_version>3) {db.close();throw new Error('This database requires a newer Folio version.');}
+  if (db.prepare('PRAGMA user_version').get().user_version>4) {db.close();throw new Error('This database requires a newer Folio version.');}
   const username = value => {
     if(typeof value!=='string')fail(400,'Enter a username.');
     const name=value.trim().toLowerCase();
@@ -77,22 +80,23 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
     if(!db.prepare('SELECT id FROM users LIMIT 1').get()){
       const legacy=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='library'").get()?db.prepare('SELECT revision,data FROM library WHERE id=1').get():null;
       const owner=db.prepare("INSERT INTO users(username,password_hash,role,created) VALUES (?,?,'owner',?)").run(username(ownerName),hash,Date.now());
-      db.prepare('INSERT INTO user_libraries VALUES (?,?,?)').run(owner.lastInsertRowid,legacy?.revision||0,legacy?.data||JSON.stringify({papers:[],settings:{}}));
+      db.prepare('INSERT INTO user_libraries VALUES (?,?,?)').run(owner.lastInsertRowid,legacy?.revision||0,legacy?.data||JSON.stringify(createStarterLibrary()));
       if(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'").get())db.exec('DELETE FROM sessions');
     }
-    if(db.prepare('PRAGMA user_version').get().user_version<3){
+    if(db.prepare('PRAGMA user_version').get().user_version<4){
       for(const row of db.prepare('SELECT user_id,data FROM user_libraries').all()){
         const data=JSON.parse(row.data);let changed=false;
+        for(const paper of data.papers){const rating=normalizeImportance(paper.importance);if(paper.importance!==rating){paper.importance=rating;changed=true}}
         for(const paper of data.papers)for(const field of ['pdfId','drivePdfId','pdfName','hasPdf','needsPdfUpload'])if(Object.hasOwn(paper,field)){delete paper[field];changed=true}
         for(const field of ['clientId','lastBackup'])if(Object.hasOwn(data.settings,field)){delete data.settings[field];changed=true}
         if(changed)db.prepare('UPDATE user_libraries SET data=?,revision=revision+1 WHERE user_id=?').run(JSON.stringify(data),row.user_id);
       }
     }
-    db.exec('PRAGMA user_version=3');
+    db.exec('PRAGMA user_version=4');
   })}catch(err){db.close();throw err}
   const publicUser = user => ({id:user.id,username:user.username,role:user.role});
   const snapshot = user => { const row = db.prepare('SELECT revision,data FROM user_libraries WHERE user_id=?').get(user.id); return {...JSON.parse(row.data),revision:row.revision,user:publicUser(user)}; };
-  const assets = new Map(['index.html','app.js','style.css'].map(name => [name, readFileSync(new URL('../dist/'+name, import.meta.url))]));
+  const assets = new Map(['index.html','app.js','style.css','starter-papers.js','importance.js'].map(name => [name, readFileSync(new URL('../dist/'+name, import.meta.url))]));
   const attempts = new Map();
   let loginBusy = false;
   const reply = (res,status,data) => { res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data)); };
@@ -142,7 +146,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
             const user=transaction(()=>{
               if(!db.prepare('SELECT id FROM invitations WHERE id=? AND expires>?').get(invite.id,Date.now()))fail(400,'This invitation is no longer valid.');
               const result=db.prepare("INSERT INTO users(username,password_hash,role,created) VALUES (?,?,'member',?)").run(name,newHash,now);
-              db.prepare('INSERT INTO user_libraries VALUES (?,0,?)').run(result.lastInsertRowid,JSON.stringify({papers:[],settings:{}}));
+              db.prepare('INSERT INTO user_libraries VALUES (?,0,?)').run(result.lastInsertRowid,JSON.stringify(createStarterLibrary()));
               return db.prepare('SELECT * FROM users WHERE id=?').get(result.lastInsertRowid);
             });
             attempts.delete(key);reply(res,201,issueSession(user));return;
@@ -250,7 +254,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
       if (url.pathname === '/config.js') { res.writeHead(200,{'Content-Type':'text/javascript'});res.end('window.FOLIO_REMOTE = true;');return; }
       const name=url.pathname==='/'?'index.html':url.pathname.slice(1);
       if (!assets.has(name)) fail(404,'Not found.');
-      res.setHeader('Content-Type',{'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]);
+      res.setHeader('Content-Type',{'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','starter-papers.js':'text/javascript; charset=utf-8','importance.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]);
       res.end(req.method==='HEAD'?undefined:assets.get(name));
     } catch (err) {
       if (!res.headersSent) reply(res,err.status || 500,{error:err.status?err.message:'Server error. Please try again.'});
