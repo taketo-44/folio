@@ -76,9 +76,39 @@ async function changeCollection(oldName,newName){
  return target;
 }
 function manageCollections(){
- const tags=existingTags();
- modal(modalTitle('Manage collections.')+`<p class="collection-help">Rename or move a collection and its children. Removing a branch removes its tags from papers, keeping all paper records.</p><div id="collection-manager" class="collection-manager">${tags.length?tags.map(tag=>`<div class="collection-manager-row"><div><strong>${esc(tag)}</strong><small>${collectionCount(tag)} papers</small></div><div class="collection-row-actions"><button type="button" class="button" data-rename-tag="${esc(tag)}" aria-label="Rename ${esc(tag)}">Rename</button><button type="button" class="button" data-move-tag="${esc(tag)}" aria-label="Move ${esc(tag)}">Move</button><button type="button" class="button danger" data-remove-tag="${esc(tag)}" aria-label="Remove ${esc(tag)}">Remove</button></div></div>`).join(''):'<p>No collections yet. Create one or add tags to a paper.</p>'}</div><div class="modal-actions"><button type="button" class="button" data-close>Done</button><button type="button" class="button primary" id="add-collection">${icon('plus')}New collection</button></div>`);
+ const tags=collectionTree();
+ modal(modalTitle('Manage collections.')+`<p class="collection-help">Drag the grip onto another collection to make it a child, or onto Top level to move it out. Children move with their parent. You can also use the Move button.</p><p id="collection-drag-status" class="collection-drag-status" role="status" aria-live="polite"></p><div id="collection-manager" class="collection-manager"><div class="collection-root-drop" data-drop-parent="">${icon('library')}Top level <span>Drop here to remove the parent layer</span></div>${tags.length?tags.map(({path:tag,label,depth})=>`<div class="collection-manager-row collection-drop-row" data-drop-parent="${esc(tag)}" style="--collection-depth:${depth}" title="${esc(tag)}"><button type="button" class="collection-drag-handle" draggable="true" data-drag-collection="${esc(tag)}" aria-label="Drag ${esc(tag)} to move it" title="Drag to change parent" aria-describedby="collection-drag-status">⠿</button><div class="collection-drag-name"><strong>${esc(label)}</strong><small>${collectionCount(tag)} papers${depth?' · '+esc(tag.slice(0,tag.lastIndexOf('/')).replaceAll('/',' › ')):''}</small></div><div class="collection-row-actions"><button type="button" class="button" data-rename-tag="${esc(tag)}" aria-label="Rename ${esc(tag)}">Rename</button><button type="button" class="button" data-move-tag="${esc(tag)}" aria-label="Move ${esc(tag)}">Move</button><button type="button" class="button danger" data-remove-tag="${esc(tag)}" aria-label="Remove ${esc(tag)}">Remove</button></div></div>`).join(''):'<p>No collections yet. Create one or add tags to a paper.</p>'}</div><div class="modal-actions"><button type="button" class="button" data-close>Done</button><button type="button" class="button primary" id="add-collection">${icon('plus')}New collection</button></div>`);
+ bindCollectionDragging();
  $('#collection-manager').onclick=e=>{if(saving)return;const b=e.target.closest('button');if(!b)return;if(b.dataset.renameTag)renameCollection(b.dataset.renameTag);if(b.dataset.moveTag)moveCollectionDialog(b.dataset.moveTag);if(b.dataset.removeTag){const tag=b.dataset.removeTag;const count=collectionCount(tag);confirmAction('Remove '+tag+'?',`Remove this collection branch from ${count} ${count===1?'paper':'papers'} and from your collections? Your papers and notes are kept.`,async()=>{await changeCollection(tag,null);toast('Collection removed.')})}};
+}
+function collectionDropAllowed(tag,parent){return !!tag&&parent.toLowerCase()!==tag.toLowerCase()&&!parent.toLowerCase().startsWith(tag.toLowerCase()+'/')}
+async function dropCollection(tag,parent){
+ if(saving)return;if(!collectionDropAllowed(tag,parent))throw new Error('A collection cannot be moved inside its own branch.');
+ const target=(parent?parent+'/':'')+tag.split('/').at(-1);
+ if(target.toLowerCase()===tag.toLowerCase())return;
+ if(existingTags().some(t=>t.toLowerCase()===target.toLowerCase())){moveCollectionDialog(tag,parent);return}
+ await moveCollection(tag,parent);render();manageCollections();toast('Collection moved.');
+}
+function bindCollectionDragging(){
+ const manager=$('#collection-manager'),status=$('#collection-drag-status');let dragged='',source=null,zone=null,touch=null;
+ const clearZone=()=>{zone?.classList.remove('collection-drop-active');zone=null};
+ const clear=()=>{clearZone();source?.classList.remove('collection-dragging');manager.classList.remove('collection-drag-in-progress');dragged='';source=null;touch=null};
+ const handle=target=>target?.closest?.('[data-drag-collection]');
+ const targetZone=target=>{const found=target?.closest?.('[data-drop-parent]');return found&&manager.contains(found)?found:null};
+ const highlight=target=>{clearZone();const candidate=targetZone(target);if(!candidate)return null;const parent=candidate.dataset.dropParent;if(!collectionDropAllowed(dragged,parent)){status.textContent='A collection cannot be dropped into its own branch.';return null}zone=candidate;zone.classList.add('collection-drop-active');status.textContent='Move '+dragged.replaceAll('/',' › ')+(parent?' under '+parent.replaceAll('/',' › '):' to top level')+'.';return zone};
+ const begin=grip=>{dragged=grip.dataset.dragCollection;source=grip.closest('[data-drop-parent]');source?.classList.add('collection-dragging');manager.classList.add('collection-drag-in-progress');status.textContent='Drag '+dragged.replaceAll('/',' › ')+' onto its new parent or Top level.'};
+ const finish=async(tag,parent)=>{try{await dropCollection(tag,parent)}catch(err){status.textContent=err.message;toast(err.message)}};
+ manager.ondragstart=e=>{const grip=handle(e.target);if(saving||!grip||!manager.contains(grip)){e.preventDefault();return}begin(grip);e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',dragged)};
+ manager.ondragover=e=>{if(!dragged||touch||saving)return;const valid=highlight(e.target);e.dataTransfer.dropEffect=valid?'move':'none';if(valid)e.preventDefault()};
+ manager.ondragleave=e=>{if(!manager.contains(e.relatedTarget))clearZone()};
+ manager.ondrop=async e=>{if(!dragged||touch)return;e.preventDefault();const destination=highlight(e.target);const tag=dragged,parent=destination?.dataset.dropParent;clear();if(parent!==undefined)await finish(tag,parent)};
+ manager.ondragend=()=>{clear();status.textContent=''};
+ // Touch/pen dragging uses the same drop rules; the Move button remains the keyboard alternative.
+ manager.onpointerdown=e=>{if(!['touch','pen'].includes(e.pointerType)||saving)return;const grip=handle(e.target);if(!grip)return;e.preventDefault();touch={id:e.pointerId,x:e.clientX,y:e.clientY,grip,started:false};grip.setPointerCapture(e.pointerId)};
+ manager.onpointermove=e=>{if(!touch||touch.id!==e.pointerId)return;if(!touch.started){if(Math.hypot(e.clientX-touch.x,e.clientY-touch.y)<6)return;const pending=touch;begin(pending.grip);touch=pending;touch.started=true}e.preventDefault();highlight(document.elementFromPoint(e.clientX,e.clientY));const dialog=$('#modal'),rect=dialog.getBoundingClientRect();if(e.clientY<rect.top+65)dialog.scrollTop-=16;else if(e.clientY>rect.bottom-65)dialog.scrollTop+=16};
+ manager.onpointerup=async e=>{if(!touch||touch.id!==e.pointerId)return;const tag=dragged,parent=touch.started?highlight(document.elementFromPoint(e.clientX,e.clientY))?.dataset.dropParent:undefined;const grip=touch.grip;clear();if(grip.hasPointerCapture(e.pointerId))grip.releasePointerCapture(e.pointerId);if(parent!==undefined)await finish(tag,parent)};
+ manager.onpointercancel=()=>{clear();status.textContent='Move canceled.'};
+ manager.onkeydown=e=>{if(e.key==='Escape'&&(dragged||touch)){e.preventDefault();e.stopPropagation();clear();status.textContent='Move canceled.'}};
 }
 async function moveCollection(tag,parent){
  const known=existingTags();const actual=known.find(t=>t.toLowerCase()===tag.toLowerCase());if(!actual)throw new Error('This collection no longer exists.');
@@ -86,8 +116,8 @@ async function moveCollection(tag,parent){
  const target=(parent?parent+'/':'')+actual.split('/').at(-1);if(target===actual)return actual;
  return changeCollection(actual,target);
 }
-function moveCollectionDialog(tag){
- const parent=tag.includes('/')?tag.slice(0,tag.lastIndexOf('/')):'';
+function moveCollectionDialog(tag,destination){
+ const parent=destination===undefined?(tag.includes('/')?tag.slice(0,tag.lastIndexOf('/')):''):destination;
  const options=collectionTree().filter(t=>t.path.toLowerCase()!==tag.toLowerCase()&&!t.path.toLowerCase().startsWith(tag.toLowerCase()+'/'));
  modal(modalTitle('Move collection.')+`<form id="move-collection-form"><p>Move <strong>${esc(tag.replaceAll('/',' › '))}</strong> and its children. Paper records keep their tags at the new location.</p><div class="field"><label for="move-collection-parent">Destination parent</label><select id="move-collection-parent"><option value="">Top level</option>${options.map(t=>`<option value="${esc(t.path)}" ${t.path===parent?'selected':''}>${esc(t.path.replaceAll('/',' › '))}</option>`).join('')}</select></div><p id="move-collection-preview" class="collection-help" role="status"></p><label id="move-merge-warning" class="auto-collection-check" hidden><input id="move-merge-confirm" type="checkbox">Merge with the collection already at this destination</label><div id="move-collection-error" class="error" role="alert"></div><div class="modal-actions"><button type="button" class="button" id="cancel-move-collection">Back</button><button class="button primary" id="save-move-collection" type="submit">Move collection</button></div></form>`);
  const target=()=>($('#move-collection-parent').value?$('#move-collection-parent').value+'/':'')+tag.split('/').at(-1);

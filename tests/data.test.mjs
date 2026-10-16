@@ -345,3 +345,36 @@ await node('#move-collection-form').onsubmit({preventDefault(){}});assert.match(
 node('#move-merge-confirm').checked=true;await node('#move-collection-form').onsubmit({preventDefault(){}});assert.equal(run('papers[0].tags[0]'),'PQC/ML-DSA');assert.equal(run('papers[1].tags[0]'),'PQC/ML-DSA/Implementations');assert.deepEqual(Array.from(run('activeCollections()')),['PQC/ML-DSA','Other']);
 assert.equal(JSON.parse(memory.get('folio-library-v1'))[0].tags[0],'PQC/ML-DSA');
 console.log('Multiple collection filters, any/all matching, hash links, branch moves, cycle guards, merge confirmation, and persistence passed.');
+
+// Native drag/drop and touch gestures use the same branch move operation and merge confirmation.
+run("papers=[{id:'drag-a',title:'Drag A',authors:'',venue:'',tags:['ML-DSA'],status:'unread',importance:'normal',notes:'Keep note'},{id:'drag-b',title:'Drag B',authors:'',venue:'',tags:['ML-DSA/Implementations'],status:'unread',importance:'normal',notes:''}];settings={collections:['ML-DSA','PQC']};view='library';setCollectionFilters(['ML-DSA']);manageCollections()");
+assert.match(node('#modal-content').innerHTML,/draggable="true"/);assert.match(node('#modal-content').innerHTML,/data-drop-parent=""/);
+const dragManager=node('#collection-manager');
+const dragZones=new Set();
+function dragZone(path){const z={dataset:{dropParent:path},classList:{add(){},remove(){}},closest(){return z}};dragZones.add(z);return z}
+function dragGrip(path){const z=dragZone(path);const g={dataset:{dragCollection:path},closest(selector){return selector==='[data-drag-collection]'?g:z},capture:null,setPointerCapture(id){this.capture=id},hasPointerCapture(id){return this.capture===id},releasePointerCapture(){this.capture=null}};dragZones.add(g);return g}
+dragManager.contains=element=>dragZones.has(element);
+const dt={setData(type,value){this[type]=value}};
+const pqcZone=dragZone('PQC'),rootZone=dragZone('');
+const nativeStart=grip=>dragManager.ondragstart({target:grip,dataTransfer:dt,preventDefault(){}});
+const nativeDrop=target=>dragManager.ondrop({target,dataTransfer:dt,preventDefault(){}});
+nativeStart(dragGrip('ML-DSA'));assert.equal(dt.effectAllowed,'move');assert.equal(dt['text/plain'],'ML-DSA');
+let acceptedInvalid=false;dragManager.ondragover({target:dragZone('ML-DSA/Implementations'),dataTransfer:dt,preventDefault(){acceptedInvalid=true}});assert.equal(acceptedInvalid,false);assert.equal(dt.dropEffect,'none');
+await nativeDrop(dragZone('ML-DSA/Implementations'));assert.equal(run('papers[0].tags[0]'),'ML-DSA');
+nativeStart(dragGrip('ML-DSA'));let acceptedDrop=false;dragManager.ondragover({target:pqcZone,dataTransfer:dt,preventDefault(){acceptedDrop=true}});assert.equal(acceptedDrop,true);assert.match(node('#collection-drag-status').textContent,/under PQC/);
+await nativeDrop(pqcZone);assert.equal(run('papers[0].tags[0]'),'PQC/ML-DSA');assert.equal(run('papers[1].tags[0]'),'PQC/ML-DSA/Implementations');assert.equal(run('collection'),'PQC/ML-DSA');
+nativeStart(dragGrip('PQC/ML-DSA'));await nativeDrop(rootZone);assert.equal(run('papers[0].tags[0]'),'ML-DSA');assert.equal(run('papers[0].notes'),'Keep note');
+// External drops cannot supply an arbitrary source collection through text/plain.
+await nativeDrop(pqcZone);assert.equal(run('papers[0].tags[0]'),'ML-DSA');
+// Touch threshold, capture and release, plus dropping onto the same destination.
+const touchGrip=dragGrip('ML-DSA');document.elementFromPoint=()=>pqcZone;node('#modal').getBoundingClientRect=()=>({top:0,bottom:600});
+dragManager.onpointerdown({target:touchGrip,pointerType:'touch',pointerId:7,clientX:10,clientY:100,preventDefault(){}});
+dragManager.onpointermove({pointerId:7,clientX:12,clientY:101,preventDefault(){}});assert.equal(run('papers[0].tags[0]'),'ML-DSA');
+dragManager.onpointermove({pointerId:7,clientX:30,clientY:110,preventDefault(){}});await dragManager.onpointerup({pointerId:7,clientX:30,clientY:110});assert.equal(touchGrip.capture,null);assert.equal(run('papers[0].tags[0]'),'PQC/ML-DSA');
+// Canceling a drag keeps its saved hierarchy.
+nativeStart(dragGrip('PQC/ML-DSA'));dragManager.onkeydown({key:'Escape',preventDefault(){},stopPropagation(){}});await nativeDrop(rootZone);assert.equal(run('papers[0].tags[0]'),'PQC/ML-DSA');
+// Collision drops open the preselected Move dialog instead of silently merging.
+run("papers.push({id:'collision',title:'Collision',authors:'',venue:'',tags:['ML-DSA'],status:'unread',importance:'normal',notes:''});settings.collections.push('ML-DSA');manageCollections()");
+nativeStart(dragGrip('ML-DSA'));await nativeDrop(pqcZone);assert.match(node('#modal-content').innerHTML,/Move collection/);assert.equal(node('#move-collection-parent').value,'PQC');assert.equal(node('#move-merge-warning').hidden,false);assert.equal(run('papers[2].tags[0]'),'ML-DSA');
+node('#move-merge-confirm').checked=true;await node('#move-collection-form').onsubmit({preventDefault(){}});assert.equal(run('papers[2].tags[0]'),'PQC/ML-DSA');
+console.log('Collection drag/drop: native and touch moves, root drops, descendant guards, cancellation, external drops, and merge confirmation passed.');
