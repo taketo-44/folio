@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {isArxivId,parseArxiv} from './arxiv.mjs';
 import https from 'node:https';
 import { pathToFileURL } from 'node:url';
 
@@ -11,7 +12,9 @@ function decodeEntities(value) {
   });
 }
 
-export function parseCitation(html, id, source = 'tches') {
+export function parseCitation(html, id, source = 'eprint') {
+  if(source==='arxiv')return parseArxiv(html,id);
+  if(source!=='eprint')throw new Error('Unsupported citation source. Use the paper DOI instead.');
   const fields = new Map();
   for (const tag of html.match(/<meta\b(?:"[^"]*"|'[^']*'|[^'">])*>/gi) || []) {
     const attrs = {};
@@ -24,41 +27,33 @@ export function parseCitation(html, id, source = 'tches') {
       fields.get(name).push(attrs.content.trim());
     }
   }
-  let embedded={};
-  if(source==='ieee'){
-    const json=html.match(/xplGlobal\.document\.metadata\s*=\s*(\{[\s\S]*?\})\s*;/)?.[1];
-    if(json){try{embedded=JSON.parse(json)}catch{}}
-    if(typeof embedded!=='object'||!embedded||Array.isArray(embedded))embedded={};
-  }
-  const text=value=>typeof value==='string'?value:'';
   const first = name => fields.get(name)?.[0] || '';
-  const venue=first('citation_journal_title')||first('citation_conference_title')||text(embedded.publicationTitle);
-  const conference=source==='ieee'&&!!(first('citation_conference_title')||/conference/i.test(text(embedded.contentType)));
-  const title = (first('citation_title')||text(embedded.title)).slice(0,500);
-  if (!title) throw new Error((source==='eprint'?'IACR ePrint':source==='ieee'?'IEEE Xplore':'TCHES')+' did not return citation details. Enter them manually or use the DOI.');
-  const doi = first('citation_doi')||text(embedded.doi);
+  const venue=first('citation_journal_title')||first('citation_conference_title');
+  const title = first('citation_title').slice(0,500);
+  if (!title) throw new Error('IACR ePrint'+' did not return citation details. Enter them manually or use the DOI.');
+  const doi = first('citation_doi');
   return {
-    title, authors:(fields.get('citation_author') || (Array.isArray(embedded.authors)?embedded.authors.map(a=>text(a?.name)).filter(Boolean):[])).slice(0,100).join('; ').slice(0,5000),
-    year:Number((first('citation_date') || first('citation_publication_date') || text(embedded.publicationDate)).match(/\b\d{4}\b/)?.[0]) || '',
+    title, authors:(fields.get('citation_author') || []).slice(0,100).join('; ').slice(0,5000),
+    year:Number((first('citation_date') || first('citation_publication_date')).match(/\b\d{4}\b/)?.[0]) || '',
     venue:venue.slice(0,1000),
-    abstract:decodeEntities((first('citation_abstract')||text(embedded.abstract)||html.match(/<h[1-6][^>]*>\s*Abstract\s*<\/h[1-6]>\s*<p[^>]*>([\s\S]*?)<\/p>/i)?.[1]||'').replace(/<[^>]*>/g,' ')).replace(/\s+/g,' ').trim().slice(0,20000),
+    abstract:decodeEntities((first('citation_abstract')||html.match(/<h[1-6][^>]*>\s*Abstract\s*<\/h[1-6]>\s*<p[^>]*>([\s\S]*?)<\/p>/i)?.[1]||'').replace(/<[^>]*>/g,' ')).replace(/\s+/g,' ').trim().slice(0,20000),
     doi:/^10\.\d{4,9}\/\S{1,2000}$/i.test(doi) ? doi : '',
-    url:source==='ieee'?'https://ieeexplore.ieee.org/document/'+id:source==='eprint'?'https://eprint.iacr.org/'+id:'https://tches.iacr.org/index.php/TCHES/article/view/'+id,
-    metadataSource:source==='ieee'?'IEEE Xplore':source==='eprint'?'IACR ePrint':'TCHES', type:source==='eprint'?'posted-content':conference?'proceedings-article':'journal-article'
+    url:'https://eprint.iacr.org/'+id,
+    metadataSource:'IACR ePrint', type:'posted-content'
   };
 }
 
-export function fetchArticle(id, source = 'tches') {
-  const valid=source==='eprint'?/^(?:19|20)\d{2}\/[1-9]\d{0,9}$/.test(id):['tches','ieee'].includes(source)&&/^[1-9]\d{0,9}$/.test(id);
+export function fetchArticle(id, source = 'eprint') {
+  const valid=source==='arxiv'?isArxivId(id):source==='eprint'&&/^(?:19|20)\d{2}\/[1-9]\d{0,9}$/.test(id);
   if(!valid)return Promise.reject(new Error('Invalid publisher paper identifier.'));
-  const url=source==='ieee'?'https://ieeexplore.ieee.org/document/'+id:source==='eprint'?'https://eprint.iacr.org/'+id:'https://tches.iacr.org/index.php/TCHES/article/view/'+id;
+  const url=source==='arxiv'?'https://export.arxiv.org/api/query?id_list='+encodeURIComponent(id):'https://eprint.iacr.org/'+id;
   return new Promise((resolve,reject) => {
     // The only upstream is this fixed HTTPS publisher path. Never follow redirects.
     const req = https.get(url, {
       signal:AbortSignal.timeout(15000),
-      headers:{'User-Agent':'Folio/1.0 (personal citation lookup)', Accept:'text/html', 'Accept-Encoding':'identity'}
+      headers:{'User-Agent':'Folio/1.0 (personal citation lookup)', Accept:source==='arxiv'?'application/atom+xml':'text/html', 'Accept-Encoding':'identity'}
     }, res => {
-      if (res.statusCode !== 200 || !/^text\/html\b/i.test(res.headers['content-type'] || '')) {
+      if (res.statusCode !== 200 || !(source==='arxiv'?/^(?:application\/(?:atom\+xml|xml)|text\/xml)\b/i:/^text\/html\b/i).test(res.headers['content-type'] || '')) {
         res.resume();
         reject(new Error('Publisher is unavailable. Try again or enter the citation manually.'));
         return;
@@ -79,9 +74,9 @@ export function fetchArticle(id, source = 'tches') {
 
 export function createMetadataServer(loadArticle = fetchArticle, allowedOrigin) {
   const cache = new Map(), pending = new Map();
-  let windowStart = Date.now(), lookups = 0;
-  const reply = (res, status, data) => {
-    res.writeHead(status, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff', ...(status===429 ? {'Retry-After':'60'} : {})});
+  let windowStart = Date.now(), lookups = 0, lastArxiv=0;
+  const reply = (res, status, data, retryAfter=60) => {
+    res.writeHead(status, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff', ...(status===429 ? {'Retry-After':String(retryAfter)} : {})});
     res.end(JSON.stringify(data));
   };
   const server = http.createServer({maxHeaderSize:8192,requestTimeout:20000,headersTimeout:10000,keepAliveTimeout:3000}, async (req,res) => {
@@ -93,19 +88,20 @@ export function createMetadataServer(loadArticle = fetchArticle, allowedOrigin) 
       const url = new URL(req.url,'http://localhost');
       if (url.pathname === '/api/health' && !url.search) { reply(res,200,{service:'folio-metadata'}); return; }
       const id = url.searchParams.get('id');
-      if (!['/api/tches','/api/eprint','/api/ieee'].includes(url.pathname)) { reply(res,404,{error:'Not found.'}); return; }
-      const source=url.pathname==='/api/ieee'?'ieee':url.pathname==='/api/eprint'?'eprint':'tches';
-      const valid=source==='eprint'?/^(?:19|20)\d{2}\/[1-9]\d{0,9}$/.test(id || ''):/^[1-9]\d{0,9}$/.test(id || '');
+      if (!['/api/eprint','/api/arxiv'].includes(url.pathname)) { reply(res,404,{error:'Not found.'}); return; }
+      const source=url.pathname==='/api/arxiv'?'arxiv':'eprint';
+      const valid=source==='arxiv'?isArxivId(id):/^(?:19|20)\d{2}\/[1-9]\d{0,9}$/.test(id || '');
       if (!valid || [...url.searchParams.keys()].some(k=>k!=='id') || url.searchParams.getAll('id').length!==1) {
-        reply(res,400,{error:'Enter a valid '+(source==='eprint'?'IACR ePrint paper':source==='ieee'?'IEEE Xplore document':'TCHES article')+' link.'}); return;
+        reply(res,400,{error:'Enter a valid '+(source==='arxiv'?'arXiv':'IACR ePrint')+' paper link.'}); return;
       }
       const cacheKey=source+':'+id;
       const cached = cache.get(cacheKey);
       if (cached && cached.expires > Date.now()) { reply(res,200,cached.data); return; }
       if (!pending.has(cacheKey)) {
+        if(source==='arxiv'&&Date.now()-lastArxiv<3000){reply(res,429,{error:'Please wait three seconds between new arXiv lookups.'},3);return;}
         if (Date.now()-windowStart >= 60000) { windowStart=Date.now(); lookups=0; }
         if (lookups>=20 || pending.size>=2) { reply(res,429,{error:'Too many lookups. Try again shortly.'}); return; }
-        lookups++;
+        lookups++;if(source==='arxiv')lastArxiv=Date.now();
         const work = (async () => {
           const data = parseCitation(await loadArticle(id,source),id,source);
           if (cache.size>=128) cache.delete(cache.keys().next().value);

@@ -1,6 +1,6 @@
 # Host Folio on this Windows laptop
 
-Caddy runs on Windows and serves only Folio's public assets from `dist/`, including when the repo lives in WSL. No WSL port forwarding or build step is needed. A localhost-only Node.js service handles TCHES article citation lookup. HTTPS is required for the app's `crypto.randomUUID()` calls.
+Caddy runs on Windows and serves only Folio's public assets from `dist/`, including when the repo lives in WSL. No WSL port forwarding or build step is needed. A localhost-only Node.js service handles IACR ePrint and arXiv citation lookup. HTTPS is required for the app's `crypto.randomUUID()` calls.
 
 ## Start
 
@@ -74,9 +74,9 @@ References: [Caddy local HTTPS](https://caddyserver.com/docs/automatic-https), [
 
 ## Effect on the institute network
 
-Folio serves its static app over HTTPS on this laptop. It does not configure the router, DHCP, DNS, VPN, network sharing, or other devices. It responds to requests directed to this laptop and does not scan or broadcast to other users. Ordinary web traffic uses a small amount of shared bandwidth when someone opens the app. Discovery, Springer/DOI lookup, and Google Drive requests are made by the requesting browser on explicit actions. A TCHES lookup makes one HTTPS request from the laptop to tches.iacr.org for the entered article; repeat lookups are cached. The localhost-only service accepts article IDs, not arbitrary destinations, does not follow redirects, and limits upstream requests to two concurrent requests and twenty per minute, with a 15-second deadline and a 512 KiB response limit.
+Folio serves its static app over HTTPS on this laptop. It does not configure the router, DHCP, DNS, VPN, network sharing, or other devices. It responds to requests directed to this laptop and does not scan or broadcast to other users. Ordinary web traffic uses a small amount of shared bandwidth when someone opens the app. Discovery and DOI lookup requests are made by the requesting browser on explicit actions. An ePrint lookup makes one HTTPS request from the laptop to eprint.iacr.org for the entered article; repeat lookups are cached. The localhost-only service accepts article IDs, not arbitrary destinations, does not follow redirects, and limits upstream requests to two concurrent requests and twenty per minute, with a 15-second deadline and a 512 KiB response limit.
 
-The public HTTPS server binds only to the selected laptop IPv4 address and loopback on TCP 8443. Its metadata helper binds only to 127.0.0.1:4174; it is reached through Caddy at /api/tches and requires no additional firewall rule. It does not bind to other laptop interfaces or IPv6. HTTP redirects, the Caddy administration API, and HTTP/3 (UDP) are disabled. Windows Firewall further restricts incoming connections to the configured client subnet. For a DNS hostname, use `-BindAddress LAPTOP_IPV4` to select the intended interface explicitly.
+The public HTTPS server binds only to the selected laptop IPv4 address and loopback on TCP 8443. Its metadata helper binds only to 127.0.0.1:4174; it is reached through Caddy at /api/eprint and /api/arxiv and requires no additional firewall rule. It does not bind to other laptop interfaces or IPv6. HTTP redirects, the Caddy administration API, and HTTP/3 (UDP) are disabled. Windows Firewall further restricts incoming connections to the configured client subnet. For a DNS hostname, use `-BindAddress LAPTOP_IPV4` to select the intended interface explicitly.
 
 The current firewall subnet includes other institute Wi-Fi users. It controls reachability rather than providing authentication. To restrict access to your own devices, pass their individual IPv4 addresses to the firewall script instead of the whole subnet. No browser library is uploaded to this server.
 

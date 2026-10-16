@@ -51,7 +51,8 @@ https://$($HostName):$Port, https://localhost:$Port {
     bind $BindAddress 127.0.0.1
     tls internal
     root * "$root"
-    handle /api/tches {
+    @metadata path /api/eprint /api/arxiv
+    handle @metadata {
         reverse_proxy 127.0.0.1:4174
     }
     @assets path / /index.html /app.js /style.css

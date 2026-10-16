@@ -23,6 +23,7 @@ try{
   const port=await open();
   assert.equal((await request('/api/library')).status,401);
   assert.equal((await request('/api/eprint?id=2006/139')).status,401);
+  assert.equal((await request('/api/arxiv?id=1706.03762')).status,401);
   assert.equal((await request('/api/ieee?id=1234567')).status,401);
   assert.equal((await request('/api/login',{method:'POST',headers:{Origin:'https://evil.example'},body:'{}'})).status,403);
   assert.equal((await request('/api/login',{method:'POST',body:JSON.stringify({password:'wrong'})})).status,401);
@@ -39,8 +40,9 @@ try{
   assert.equal((await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,revision:1,papers:[{...paper,title:''}]})})).status,400);
   assert.equal((await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,revision:1,papers:[{...paper,url:'javascript:alert(1)'}]})})).status,400);
   assert.equal((await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,revision:1,papers:[paper,paper]})})).status,400);
-  assert.equal((await request('/api/tches?id=12')).status,200);
-  assert.equal((await request('/api/ieee?id=1234567')).status,200);
+  assert.equal((await request('/api/arxiv?id=1706.03762')).status,502);
+  assert.equal((await request('/api/tches?id=12')).status,404);
+  assert.equal((await request('/api/ieee?id=1234567')).status,404);
   assert.equal((await request('/api/eprint?id=2006/139')).status,200);
   assert.equal((await request('/api/eprint?id=../139')).status,400);
   assert.match(await (await request('/config.js')).text(),/FOLIO_REMOTE = true/);

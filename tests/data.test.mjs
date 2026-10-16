@@ -23,18 +23,7 @@ assert.equal(run('filtered().length'),5);
 assert.equal(run("safeUrl('javascript:alert(1)')"),'');
 assert.equal(run("getDoi('https://doi.org/10.1137/0218012')"),'10.1137/0218012');
 
-assert.equal(run("getDoi('https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31?from=search#cite')"),'10.1007/978-3-540-74735-2_31');
-assert.equal(run("getDoi('link.springer.com/chapter/10.1007%2F978-3-540-74735-2_31')"),'10.1007/978-3-540-74735-2_31');
-assert.equal(run("getDoi('https://link.springernature.com/chapter/10.1007/978-3-540-74735-2_31')"),'10.1007/978-3-540-74735-2_31');
 assert.equal(run("getDoi('https://doi.org/10.1007%2F978-3-540-74735-2_31?x=1')"),'10.1007/978-3-540-74735-2_31');
-assert.equal(run("getDoi('https://link.springer.com/chapter/10.1007%ZZ/test')"),'');
-assert.equal(run("getDoi('https://link.springer.com.evil.test/chapter/10.1007/test')"),'');
-assert.equal(run("getDoi('https://user@link.springer.com/chapter/10.1007/test')"),'');
-assert.equal(run("getTchesArticleId('https://tches.iacr.org/index.php/TCHES/article/view/8968?x=1#cite')"),'8968');
-assert.equal(run("getTchesArticleId('tches.iacr.org/index.php/TCHES/article/download/8968/8575')"),'8968');
-assert.equal(run("getTchesArticleId('https://tches.iacr.org/index.php/TCHES/article/view/8968/8575')"),'8968');
-assert.equal(run("getTchesArticleId('https://tches.iacr.org.evil.test/index.php/TCHES/article/view/8968')"),'');
-assert.equal(run("getTchesArticleId('https://tches.iacr.org:8443/index.php/TCHES/article/view/8968')"),'');
 
 assert.match(run("citation(papers[3],'bibtex')"),/@inproceedings/);
 assert.match(run("citation(papers[3],'bibtex')"),/booktitle =/);
@@ -52,47 +41,26 @@ assert.equal(run('papers[0].title'),'Newer remote');
 assert.equal(run('papers[0].pdfId'),undefined);
 
 
-// Real lookup/save flow: preserve publisher links and resolved DOI, and reject duplicates.
+// DOI lookup fills citations and abstracts and protects against duplicates.
 const requests=[];
-const chapter={DOI:'10.1007/978-3-540-74735-2_31',title:['PRESENT: An Ultra-Lightweight Block Cipher'],author:[{given:'A.',family:'Bogdanov'}],published:{'date-parts':[[2007]]},'container-title':['CHES 2007'],type:'book-chapter'};
-const tches={doi:'10.46586/tches.v2021.i3.60-96',title:'Ensemble Models',authors:'Gabriel Zaid; Lilian Bossuet',year:2021,venue:'TCHES',metadataSource:'TCHES',type:'journal-article'};
-context.fetch=async url=>{requests.push(url);return {ok:true,json:async()=>url.startsWith('/api/tches')?tches:{message:chapter}}};
+const chapter={DOI:'10.1007/978-3-540-74735-2_31',title:['PRESENT: An Ultra-Lightweight Block Cipher'],author:[{given:'A.',family:'Bogdanov'}],published:{'date-parts':[[2007]]},'container-title':['CHES 2007'],type:'book-chapter',abstract:'<p>A lightweight block cipher.</p>'};
+context.fetch=async url=>{requests.push(url);return {ok:true,json:async()=>({message:chapter})}};
 run("view='library'; addMode='url'");
-node('#paper-url').value='https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31';
+node('#paper-url').value='https://doi.org/'+chapter.DOI;
 await run('lookupMetadata()');
-assert.equal(node('#paper-title').value,chapter.title[0]);
-assert.equal(node('#paper-year').value,2007);
-node('#paper-status').value='unread';
-node('#paper-priority').value='normal';
-node('#paper-tags').value='';
+assert.equal(node('#paper-title').value,chapter.title[0]);assert.equal(node('#paper-year').value,2007);assert.equal(node('#paper-abstract').value,'A lightweight block cipher.');
+node('#paper-status').value='unread';node('#paper-priority').value='normal';node('#paper-tags').value='';
 await run('submitAdd({preventDefault(){}})');
-assert.equal(run('papers[0].doi'),chapter.DOI);
-assert.equal(run('papers[0].url'),node('#paper-url').value);
-assert.equal(run('papers[0].type'),'book-chapter');
+assert.equal(run('papers[0].doi'),chapter.DOI);assert.equal(run('papers[0].url'),node('#paper-url').value);assert.equal(run('papers[0].type'),'book-chapter');
 assert.match(requests[0],/^https:\/\/api.crossref.org\/works\/10\.1007%2F/);
-const beforeTches=run('papers.length');
-node('#paper-url').value='https://tches.iacr.org/index.php/TCHES/article/view/8968/8575?download=1';
-await run('lookupMetadata()');
-await run('submitAdd({preventDefault(){}})');
-assert.equal(run('papers.length'),beforeTches+1);
-assert.equal(run('papers[0].doi'),tches.doi);
-assert.equal(run('papers[0].url'),node('#paper-url').value);
-assert.equal(requests.at(-1),'/api/tches?id=8968');
-await run('submitAdd({preventDefault(){}})');
-assert.equal(run('papers.length'),beforeTches+1);
-assert.match(node('#add-error').textContent,/already in your library/);
-
+const beforeDuplicate=run('papers.length');await run('submitAdd({preventDefault(){}})');assert.equal(run('papers.length'),beforeDuplicate);assert.match(node('#add-error').textContent,/already in your library/);
 // Editing the URL after lookup must not attach the old article's DOI.
-node('#paper-url').value='https://example.com/different-paper';
-node('#paper-title').value='Different paper';
-await run('submitAdd({preventDefault(){}})');
-assert.equal(run('papers[0].doi'),'');
-assert.equal(run('papers[0].metadataSource'),'');
+node('#paper-url').value='https://example.com/different-paper';node('#paper-title').value='Different paper';await run('submitAdd({preventDefault(){}})');assert.equal(run('papers[0].doi'),'');assert.equal(run('papers[0].metadataSource'),'');
 
 // An old response must not overwrite fields when the URL changes during lookup.
 let resolveRequest;
 context.fetch=()=>new Promise(resolve=>{resolveRequest=resolve});
-node('#paper-url').value='https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31';
+node('#paper-url').value='https://doi.org/'+chapter.DOI;
 node('#paper-title').value='Keep this title';
 const pendingLookup=run('lookupMetadata()');
 node('#paper-url').value='https://example.com/new-link';
@@ -101,7 +69,7 @@ await pendingLookup;
 assert.equal(node('#paper-title').value,'Keep this title');
 assert.equal(run('lookedUpMetadata'),null);
 context.fetch=async()=>({ok:false,status:502});
-node('#paper-url').value='https://tches.iacr.org/index.php/TCHES/article/view/8968';
+node('#paper-url').value='10.46586/tches.v2021.i3.60-96';
 await run('lookupMetadata()');
 assert.match(node('#add-error').textContent,/manually/);
 assert.equal(node('#lookup').disabled,false);
@@ -236,16 +204,7 @@ await node('#detail-form').onsubmit({preventDefault(){}});
 assert.deepEqual(Array.from(run('papers[0].tags')),['Cryptography']);
 console.log('Collection tag editing and persistence passed.');
 
-// ACM URLs resolve their DOI, including IEEE articles indexed in ACM's library.
-for(const path of ['doi/','doi/abs/','doi/full/','doi/pdf/','doi/epdf/']){
- assert.equal(run(`getDoi('https://dl.acm.org/${path}10.1145/3658644.3690339?download=1#cite')`),'10.1145/3658644.3690339');
-}
-assert.equal(run("getDoi('dl.acm.org/doi/10.1109/TIFS.2020.3045904')"),'10.1109/TIFS.2020.3045904');
-assert.equal(run("getDoi('https://dl.acm.org/doi/10.1145%2F3658644.3690339')"),''); // DOI path must include the standard slash.
-assert.equal(run("getDoi('https://dl.acm.org/doi/10.1145/3658644.3690339/')"),'10.1145/3658644.3690339');
-for(const url of ['https://dl.acm.org.evil.test/doi/10.1145/3658644.3690339','https://user@dl.acm.org/doi/10.1145/3658644.3690339','https://dl.acm.org:8443/doi/10.1145/3658644.3690339','https://dl.acm.org/action/10.1145/3658644.3690339','https://dl.acm.org/doi/10.1145/%ZZ']){
- context.acmUrl=url;assert.equal(run('getDoi(acmUrl)'),'');
-}
+// DOI metadata still supplies concise venue names for ACM and IEEE papers.
 assert.equal(run("crossrefVenue({'container-title':['Some Other Journal']})"),'Some Other Journal');
 assert.equal(run("crossrefVenue({'container-title':['ACM Conference on Computer Supported Cooperative Work']})"),'ACM Conference on Computer Supported Cooperative Work');
 run("papers=[];addPaper()");
@@ -253,7 +212,7 @@ const acmRequests=[];
 for(const [name,doi,venue] of [['ccs','10.1145/3658644.3690339','ACM CCS'],['tifs','10.1109/TIFS.2020.3045904','IEEE TIFS']]){
  const record=JSON.parse(fs.readFileSync(new URL(`fixtures/acm-${name}.json`,import.meta.url),'utf8'));
  context.fetch=async url=>{acmRequests.push(url);return {ok:true,json:async()=>({message:record})}};
- node('#paper-url').value='https://dl.acm.org/doi/'+doi;
+ node('#paper-url').value=doi;
  await run('lookupMetadata()');
  assert.equal(node('#paper-title').value,record.title[0]);
  assert.equal(node('#paper-venue').value,venue);
@@ -261,7 +220,7 @@ for(const [name,doi,venue] of [['ccs','10.1145/3658644.3690339','ACM CCS'],['tif
  await run('submitAdd({preventDefault(){}})');
  assert.equal(run('papers[0].venue'),venue);
  assert.equal(run('papers[0].doi').toLowerCase(),doi.toLowerCase());
- assert.equal(run('papers[0].url'),node('#paper-url').value);
+ assert.equal(run('papers[0].url'),'https://doi.org/'+doi);
  assert.equal(acmRequests.at(-1),'https://api.crossref.org/works/'+encodeURIComponent(doi));
  assert.match(run("citation(papers[0],'bibtex')"),name==='ccs'?/@inproceedings/:/@article/);
  const count=run('papers.length');
@@ -270,7 +229,7 @@ for(const [name,doi,venue] of [['ccs','10.1145/3658644.3690339','ACM CCS'],['tif
  assert.equal(run('papers.length'),count);
  assert.match(node('#add-error').textContent,/already in your library/);
 }
-console.log('ACM links, real Crossref venue fixtures, save/cite, and DOI duplicate protection passed.');
+console.log('DOI lookup, Crossref venue fixtures, save/cite, and duplicate protection passed.');
 
 // Manage collections: rename every use, merge without duplicate tags, and remove only the tag.
 run("papers=[{id:'a',title:'A',authors:'',venue:'',notes:'Keep notes',pdfId:'keep-pdf',tags:['Crypto','Lattices'],status:'unread',importance:'normal',updated:1},{id:'b',title:'B',authors:'',venue:'',tags:['Crypto','Cryptography'],status:'read',importance:'high',updated:1}];settings={clientId:'keep-client',collections:['Crypto','Cryptography','Empty']};collection='Crypto';view='library'");
@@ -321,27 +280,6 @@ assert.equal(run('papers[0].url'),'https://example.com/new');
 run('renderSettings()');assert.doesNotMatch(node('#main').innerHTML,/Google|Drive|PDF|OAuth/);
 console.log('Citation-only imports, editable source links, and removal of PDF/Drive controls passed.');
 
-// IEEE document, abstract, and external PDF-view links all identify the same citation.
-for(const url of ['https://ieeexplore.ieee.org/document/1234567/','ieeexplore.ieee.org/abstract/document/1234567','https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=1234567','https://ieeexplore.ieee.org/xpl/documentDetails.jsp?arnumber=1234567','https://ieeexplore.ieee.org/xpls/abs_all.jsp?arnumber=1234567']){
- context.ieeeUrl=url;assert.equal(run('getIeeeId(ieeeUrl)'),'1234567');
-}
-for(const url of ['https://ieeexplore.ieee.org.evil.test/document/1234567','https://user@ieeexplore.ieee.org/document/1234567','https://ieeexplore.ieee.org:8443/document/1234567','https://ieeexplore.ieee.org/document/0','https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=123&arnumber=456']){
- context.ieeeUrl=url;assert.equal(run('getIeeeId(ieeeUrl)'),'');
-}
-run('papers=[];addPaper()');
-const ieeeMetadata={title:'An IEEE paper',authors:'A. Author',year:2021,venue:'IEEE Transactions on Information Forensics and Security',doi:'10.1109/TIFS.2020.3045904',type:'journal-article',url:'https://ieeexplore.ieee.org/document/1234567',metadataSource:'IEEE Xplore'};
-const ieeeCalls=[];
-context.fetch=async url=>{ieeeCalls.push(url);if(url.startsWith('/api/ieee'))return {ok:true,json:async()=>ieeeMetadata};throw new Error('Crossref unavailable')};
-node('#paper-url').value='https://ieeexplore.ieee.org/document/1234567';await run('lookupMetadata()');assert.equal(node('#paper-title').value,'An IEEE paper');assert.equal(node('#paper-venue').value,'IEEE TIFS');
-node('#paper-tags').value='';await run('submitAdd({preventDefault(){}})');assert.equal(run('papers.length'),1);assert.equal(run('papers[0].doi'),ieeeMetadata.doi);assert.equal(run('papers[0].url'),ieeeMetadata.url);
-node('#paper-url').value='https://ieeexplore.ieee.org/abstract/document/1234567';await run('submitAdd({preventDefault(){}})');assert.equal(run('papers.length'),1);assert.match(node('#add-error').textContent,/already in your library/);
-assert.equal(ieeeCalls[0],'/api/ieee?id=1234567');
-// When Crossref is available, use its full citation metadata after resolving the IEEE DOI.
-const ieeeCrossref=JSON.parse(fs.readFileSync(new URL('fixtures/acm-tifs.json',import.meta.url),'utf8'));
-context.fetch=async url=>({ok:true,json:async()=>url.startsWith('/api/ieee')?ieeeMetadata:{message:ieeeCrossref}});
-assert.equal((await run("lookupPaper('https://ieeexplore.ieee.org/document/1234567')")).title,ieeeCrossref.title[0]);
-console.log('IEEE URL variants, metadata lookup/save, venue names, Crossref fallback, and duplicate detection passed.');
-
 // A collection path supplies implicit parent nodes and parent filtering includes descendants.
 run("papers=[{id:'dsa',title:'DSA paper',authors:'',venue:'',tags:['PQC/ML-DSA'],status:'unread',importance:'normal',notes:''},{id:'kem',title:'KEM paper',authors:'',venue:'',tags:['PQC/ML-KEM'],status:'read',importance:'normal',notes:''},{id:'other',title:'Other paper',authors:'',venue:'',tags:['Other'],status:'unread',importance:'normal',notes:''}];settings={collections:['PQC/ML-DSA','PQC/ML-KEM']};view='library';collection='PQC';query='';statusFilter='all';priorityFilter='all'");
 assert.equal(run('filtered().length'),2);
@@ -356,3 +294,25 @@ assert.equal(run("abstractText('<jats:p>ML-DSA &amp; ML-KEM</jats:p>')"),'ML-DSA
 assert.equal(run("crossrefPaper({abstract:'<jats:p>Abstract text</jats:p>'}).abstract"),'Abstract text');
 assert.equal(run("validateBackup({version:1,papers:[{id:'abs',title:'Abstract paper',abstract:'Keep abstract'}]})[0].abstract"),'Keep abstract');
 console.log('Layered collections, subtree filtering/rename/removal, and abstract metadata passed.');
+
+// Retired publisher lookup paths never fetch metadata; their URLs remain saveable as links.
+let publisherFetches=0;context.fetch=async()=>{publisherFetches++;throw new Error('Unexpected publisher request')};
+for(const url of ['https://link.springer.com/chapter/10.1007/example','https://ieeexplore.ieee.org/document/1234567','https://dl.acm.org/doi/10.1145/example','https://tches.iacr.org/index.php/TCHES/article/view/8968']){
+ context.publisherUrl=url;assert.equal(run('getDoi(publisherUrl)'),'');await assert.rejects(run('lookupPaper(publisherUrl)'),/DOI/);
+ run("addPaper()");node('#paper-url').value=url;node('#paper-title').value='Manually saved publisher citation';node('#paper-tags').value='';node('#paper-abstract').value='';
+ const previousCount=run('papers.length');await run('submitAdd({preventDefault(){}})');assert.equal(run('papers.length'),previousCount+1);assert.equal(run('papers[0].url'),url);assert.equal(run('papers[0].doi'),'');
+}
+assert.equal(publisherFetches,0);
+assert.equal(run("getDoi('doi:10.1145/3658644.3690339')"),'10.1145/3658644.3690339');
+assert.equal(run("getDoi('https://dx.doi.org/10.1109/TIFS.2020.3045904')"),'10.1109/TIFS.2020.3045904');
+console.log('Publisher-specific lookup removed; DOI/ePrint lookup and manual publisher links retained.');
+
+// Preprint repositories remain supported, including arXiv papers with no DOI.
+for(const url of ['https://arxiv.org/abs/1706.03762','arxiv.org/pdf/1706.03762.pdf','https://arxiv.org/html/1706.03762','https://export.arxiv.org/abs/1706.03762']){context.arxivUrl=url;assert.equal(run('getArxivId(arxivUrl)'),'1706.03762');}
+assert.equal(run("getArxivId('https://arxiv.org/abs/hep-th/9901001v2')"),'hep-th/9901001v2');
+for(const url of ['https://arxiv.org.evil.test/abs/1706.03762','https://user@arxiv.org/abs/1706.03762','https://arxiv.org:8443/abs/1706.03762','https://arxiv.org/abs/1713.00001','https://arxiv.org/abs/1706.03762/extra']){context.arxivUrl=url;assert.equal(run('getArxivId(arxivUrl)'),'');}
+const arxivPaper={title:'A preprint without DOI',authors:'Alice Example',year:2017,venue:'arXiv',abstract:'An abstract for collection classification.',doi:'',type:'posted-content',metadataSource:'arXiv',url:'https://arxiv.org/abs/1706.03762'};
+const arxivCalls=[];context.fetch=async url=>{arxivCalls.push(url);return {ok:true,json:async()=>arxivPaper}};
+run('papers=[];addPaper()');node('#paper-url').value=arxivPaper.url;await run('lookupMetadata()');assert.equal(node('#paper-title').value,arxivPaper.title);assert.equal(node('#paper-abstract').value,arxivPaper.abstract);node('#paper-tags').value='';await run('submitAdd({preventDefault(){}})');assert.equal(run('papers.length'),1);assert.equal(run('papers[0].doi'),'');assert.equal(run('papers[0].metadataSource'),'arXiv');assert.match(run("citation(papers[0],'bibtex')"),/^@misc/);assert.deepEqual(arxivCalls,['/api/arxiv?id=1706.03762']);
+node('#paper-url').value='https://arxiv.org/pdf/1706.03762v2.pdf';await run('submitAdd({preventDefault(){}})');assert.equal(run('papers.length'),1);assert.match(node('#add-error').textContent,/already in your library/);
+console.log('arXiv URL lookup, DOI-free citation save, abstract capture, BibTeX and version duplicate protection passed.');
