@@ -1,4 +1,6 @@
 import http from 'node:http';
+import {isIP} from 'node:net';
+import {securityHeaders} from './http-security.mjs';
 import {normalizeImportance} from '../dist/importance.js';
 import {createStarterLibrary} from '../dist/starter-papers.js';
 import {createClassifier,normalizeSuggestions} from './classify.mjs';
@@ -53,7 +55,7 @@ function validate(data) {
   return data;
 }
 
-export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp = false, classifier=createClassifier(), aiDailyLimit=100, aiUserDailyLimit=20, metadata = createMetadataServer(undefined, origin)} = {}) {
+export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp = false, trustedProxy = false, classifier=createClassifier(), aiDailyLimit=100, aiUserDailyLimit=20, metadata = createMetadataServer(undefined, origin)} = {}) {
   if(!Number.isSafeInteger(aiDailyLimit)||aiDailyLimit<1||!Number.isSafeInteger(aiUserDailyLimit)||aiUserDailyLimit<1)throw new Error('AI daily limits must be positive integers.');
   const aiPending=new Set();
   const publicURL = new URL(origin);
@@ -99,20 +101,25 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
   const snapshot = user => { const row = db.prepare('SELECT revision,data FROM user_libraries WHERE user_id=?').get(user.id); return {...JSON.parse(row.data),revision:row.revision,user:publicUser(user)}; };
   const assets = new Map(['index.html','app.js','style.css','starter-papers.js','importance.js','venue-ranks.js'].map(name => [name, readFileSync(new URL('../dist/'+name, import.meta.url))]));
   const attempts = new Map();
-  let loginBusy = false;
+  const attemptLimit=(key,now)=>{
+    for(const [entry,value] of attempts)if(value.until<now)attempts.delete(entry);
+    if(!attempts.has(key)&&attempts.size>=10000)fail(429,'Too many sign-in attempts. Try again later.');
+    const limit=attempts.get(key)||{count:0,until:now+15*60*1000};
+    if(limit.count>=10)fail(429,'Too many sign-in attempts. Try again in 15 minutes.');
+    limit.count++;attempts.set(key,limit);
+  };
   const reply = (res,status,data) => { res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data)); };
   const readJSON = async (req, maxSize=16384) => {
     if (!/^application\/json\b/.test(req.headers['content-type'] || '')) fail(415,'Use JSON.');
     let size=0;const parts=[];
     for await (const part of req) { size+=part.length; if (size>maxSize) fail(413,'Request exceeds the size limit.');parts.push(part); }
-    try { return JSON.parse(Buffer.concat(parts)); } catch { fail(400,'Invalid JSON.'); }
+    let data;try { data=JSON.parse(Buffer.concat(parts)); } catch { fail(400,'Invalid JSON.'); }
+    if(!data||typeof data!=='object'||Array.isArray(data))fail(400,'Use a JSON object.');
+    return data;
   };
   const cookie = (value, age) => `folio_session=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}`+(publicURL.protocol==='https:'?'; Secure':'');
   const server = http.createServer({requestTimeout:30000,headersTimeout:10000,maxHeaderSize:8192}, async (req,res) => {
-    res.setHeader('Cache-Control','no-store');
-    res.setHeader('X-Content-Type-Options','nosniff');
-    res.setHeader('Referrer-Policy','same-origin');
-    res.setHeader('X-Frame-Options','DENY');
+    securityHeaders(res,publicURL.protocol==='https:');
     try {
       if (req.headers.host !== publicURL.host) fail(403,'Invalid host.');
       const url = new URL(req.url,origin);
@@ -122,43 +129,46 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
       const issueSession = user => {
         const id=token(),csrf=token(),now=Date.now();
         db.prepare('DELETE FROM user_sessions WHERE expires < ?').run(now);
+        // Bound authenticated session growth while retaining normal multi-device use.
+        db.prepare('DELETE FROM user_sessions WHERE user_id=? AND id NOT IN (SELECT id FROM user_sessions WHERE user_id=? ORDER BY expires DESC,rowid DESC LIMIT 19)').run(user.id,user.id);
         db.prepare('INSERT INTO user_sessions VALUES (?,?,?,?)').run(digest(id),user.id,csrf,now+7*86400000);
         res.setHeader('Set-Cookie',cookie(id,7*86400));return {csrf,user:publicUser(user),aiConfigured:classifier.enabled===true};
       };
       if (['/api/login','/api/register'].includes(url.pathname) && req.method === 'POST') {
         const now=Date.now();
-        // Shared proxy limit; do not trust client-supplied forwarding headers.
-        for (const [key,v] of attempts) if (v.until<now) attempts.delete(key);
-        const key=req.socket.remoteAddress;
-        const limit=attempts.get(key) || {count:0,until:now+15*60*1000};
-        if (loginBusy || limit.count>=10) fail(429,'Too many sign-in attempts. Try again in 15 minutes.');
-        limit.count++;attempts.set(key,limit);loginBusy=true;
-        try {
-          const data=await readJSON(req);
-          if(!data||typeof data!=='object')fail(400,'Invalid account details.');
-          if (url.pathname==='/api/register'){
-            const name=username(data.username);
-            if(typeof data.invitation!=='string'||! /^[a-f0-9]{64}$/.test(data.invitation))fail(400,'A valid invitation is required.');
-            const invite=db.prepare('SELECT * FROM invitations WHERE token_hash=? AND expires>?').get(digest(data.invitation),now);
-            if(!invite)fail(400,'This invitation is invalid, expired, or revoked.');
-            if(db.prepare('SELECT id FROM users WHERE username=?').get(name))fail(409,'This username is already taken.');
-            if(db.prepare('SELECT count(*) AS n FROM users').get().n>=1000)fail(409,'The server account limit has been reached.');
-            let newHash;try{newHash=passwordHash(data.password)}catch(err){fail(400,err.message)}
-            const user=transaction(()=>{
-              if(!db.prepare('SELECT id FROM invitations WHERE id=? AND expires>?').get(invite.id,Date.now()))fail(400,'This invitation is no longer valid.');
-              const result=db.prepare("INSERT INTO users(username,password_hash,role,created) VALUES (?,?,'member',?)").run(name,newHash,now);
-              db.prepare('INSERT INTO user_libraries VALUES (?,0,?)').run(result.lastInsertRowid,JSON.stringify(createStarterLibrary()));
-              return db.prepare('SELECT * FROM users WHERE id=?').get(result.lastInsertRowid);
-            });
-            attempts.delete(key);reply(res,201,issueSession(user));return;
-          }
-          const name=typeof data.username==='string'?data.username.trim().toLowerCase():ownerName;
-          const user=db.prepare('SELECT * FROM users WHERE username=? AND enabled=1').get(name);
-          // Dummy check keeps an unknown username on the same password-check path.
-          const correct=typeof data.password==='string'&&data.password.length<=1024&&checkPassword(data.password,user?.password_hash||hash);
-          if(!user||!correct)fail(401,'Incorrect username or password.');
-          attempts.delete(key);reply(res,200,issueSession(user));
-        } finally { loginBusy=false; }
+        // Forwarded addresses are accepted only in explicit, private-proxy mode.
+        // Caddy overwrites this dedicated header with its actual connecting client.
+        const forwarded=req.headers['x-folio-client-ip'];
+        const address=trustedProxy&&typeof forwarded==='string'&&isIP(forwarded)?forwarded:req.socket.remoteAddress;
+        const key='ip:'+address;
+        attemptLimit(key,now);
+        // Never hold a global login lock while waiting for an untrusted upload.
+        const data=await readJSON(req);
+        if(!data||typeof data!=='object'||Array.isArray(data))fail(400,'Invalid account details.');
+        const name=typeof data.username==='string'?data.username.trim().toLowerCase():ownerName;
+        const accountKey='account:'+digest(name);
+        if(url.pathname==='/api/login')attemptLimit(accountKey,Date.now());
+        if (url.pathname==='/api/register'){
+          const name=username(data.username);
+          if(typeof data.invitation!=='string'||! /^[a-f0-9]{64}$/.test(data.invitation))fail(400,'A valid invitation is required.');
+          const invite=db.prepare('SELECT * FROM invitations WHERE token_hash=? AND expires>?').get(digest(data.invitation),now);
+          if(!invite)fail(400,'This invitation is invalid, expired, or revoked.');
+          if(db.prepare('SELECT id FROM users WHERE username=?').get(name))fail(409,'This username is already taken.');
+          if(db.prepare('SELECT count(*) AS n FROM users').get().n>=1000)fail(409,'The server account limit has been reached.');
+          let newHash;try{newHash=passwordHash(data.password)}catch(err){fail(400,err.message)}
+          const user=transaction(()=>{
+            if(!db.prepare('SELECT id FROM invitations WHERE id=? AND expires>?').get(invite.id,Date.now()))fail(400,'This invitation is no longer valid.');
+            const result=db.prepare("INSERT INTO users(username,password_hash,role,created) VALUES (?,?,'member',?)").run(name,newHash,now);
+            db.prepare('INSERT INTO user_libraries VALUES (?,0,?)').run(result.lastInsertRowid,JSON.stringify(createStarterLibrary()));
+            return db.prepare('SELECT * FROM users WHERE id=?').get(result.lastInsertRowid);
+          });
+          attempts.delete(key);reply(res,201,issueSession(user));return;
+        }
+        const user=db.prepare('SELECT * FROM users WHERE username=? AND enabled=1').get(name);
+        // Dummy check keeps an unknown username on the same password-check path.
+        const correct=typeof data.password==='string'&&data.password.length<=1024&&checkPassword(data.password,user?.password_hash||hash);
+        if(!user||!correct)fail(401,'Incorrect username or password.');
+        attempts.delete(key);attempts.delete(accountKey);reply(res,200,issueSession(user));
         return;
       }
       const raw=req.headers.cookie?.match(/(?:^|;\s*)folio_session=([a-f0-9]{64})(?:;|$)/)?.[1];
@@ -168,11 +178,15 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
         const user=db.prepare('SELECT * FROM users WHERE id=?').get(session.user_id);
         if(req.headers['x-folio-user']&&req.headers['x-folio-user']!==String(user.id)){reply(res,409,{error:'The signed-in account changed. Sign in again to continue.',accountChanged:true});return;}
         if (mutating && req.headers['x-csrf-token'] !== session.csrf) fail(403,'Invalid session token.');
+        const requireCurrentSession=()=>{
+          if(!db.prepare('SELECT s.id FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.user_id=? AND s.expires>? AND u.enabled=1').get(session.id,user.id,Date.now()))fail(401,'Sign in to your library.');
+        };
+        const readAuthenticatedJSON=async(maxSize)=>{const data=await readJSON(req,maxSize);requireCurrentSession();return data};
         if (url.pathname === '/api/session' && req.method === 'GET') { reply(res,200,{csrf:session.csrf,user:publicUser(user),aiConfigured:classifier.enabled===true});return; }
         if (url.pathname === '/api/logout' && req.method === 'POST') { db.prepare('DELETE FROM user_sessions WHERE id=?').run(session.id);res.setHeader('Set-Cookie',cookie('',0));reply(res,200,{ok:true});return; }
         if (url.pathname === '/api/library' && req.method === 'GET') { reply(res,200,snapshot(user));return; }
         if (url.pathname === '/api/library' && req.method === 'PUT') {
-          const data=validate(await readJSON(req,10*1024*1024));
+          const data=validate(await readAuthenticatedJSON(10*1024*1024));
           if (!Number.isSafeInteger(data.revision) || data.revision<0) fail(400,'Invalid revision.');
           const result=db.prepare('UPDATE user_libraries SET data=?,revision=revision+1 WHERE user_id=? AND revision=?').run(JSON.stringify({papers:data.papers,settings:data.settings}),user.id,data.revision);
           if (!result.changes) { reply(res,409,{error:'Your library changed on another device. The latest library was loaded; review and retry your edit.',library:snapshot(user)});return; }
@@ -181,7 +195,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
         if(url.pathname==='/api/ai'&&req.method==='GET'){reply(res,200,{configured:classifier.enabled===true,dailyLimit:aiUserDailyLimit});return;}
         if(url.pathname==='/api/classify'&&req.method==='POST'){
           if(!classifier.enabled)fail(503,'The owner must configure an OpenAI API key on the server first.');
-          const data=await readJSON(req,100000),library=snapshot(user);
+          const data=await readAuthenticatedJSON(100000),library=snapshot(user);
           if(!library.settings.autoCollections)fail(403,'Enable automatic collections in Settings first.');
           if(typeof data?.title!=='string'||data.title.length>500||typeof data.abstract!=='string'||!data.abstract.trim()||data.abstract.length>20000)fail(400,'Add an abstract of at most 20,000 characters first.');
           if(data.revision!==library.revision){reply(res,409,{error:'Your library changed. Review the latest library and try again.',library});return;}
@@ -211,7 +225,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
           if(limit.until<now){limit.count=0;limit.until=now+15*60*1000}
           if(limit.count>=10)fail(429,'Too many password attempts. Try again in 15 minutes.');
           limit.count++;attempts.set(key,limit);
-          const data=await readJSON(req);
+          const data=await readAuthenticatedJSON();
           if(!data||typeof data!=='object')fail(400,'Invalid password details.');
           if(typeof data.currentPassword!=='string'||data.currentPassword.length>1024||!checkPassword(data.currentPassword,user.password_hash))fail(401,'Incorrect current password.');
           let newHash;try{newHash=passwordHash(data.password)}catch(err){fail(400,err.message)}
@@ -237,7 +251,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
           if(inviteID&&req.method==='DELETE') {db.prepare('DELETE FROM invitations WHERE id=?').run(inviteID);reply(res,200,{ok:true});return;}
           const accountID=url.pathname.match(/^\/api\/admin\/users\/([1-9]\d*)$/)?.[1];
           if(accountID&&req.method==='PATCH'){
-            const data=await readJSON(req);if(typeof data.enabled!=='boolean')fail(400,'Specify whether the account is enabled.');
+            const data=await readAuthenticatedJSON();if(typeof data.enabled!=='boolean')fail(400,'Specify whether the account is enabled.');
             const target=db.prepare('SELECT * FROM users WHERE id=?').get(accountID);
             if(!target)fail(404,'Account not found.');if(target.role==='owner')fail(400,'The owner account cannot be disabled.');
             transaction(()=>{db.prepare('UPDATE users SET enabled=? WHERE id=?').run(Number(data.enabled),target.id);db.prepare('DELETE FROM user_sessions WHERE user_id=?').run(target.id)});
@@ -268,7 +282,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.umask(0o077);
-  const server=createApp({origin:process.env.APP_ORIGIN,hash:process.env.FOLIO_PASSWORD_HASH,ownerName:process.env.FOLIO_OWNER_USERNAME || 'owner',classifier:createClassifier({apiKey:process.env.OPENAI_API_KEY||'',model:process.env.OPENAI_MODEL||'gpt-4.1-mini'}),aiDailyLimit:Number(process.env.AI_DAILY_LIMIT||100),aiUserDailyLimit:Number(process.env.AI_USER_DAILY_LIMIT||20),dbPath:process.env.DB_PATH || './.runtime/folio.sqlite',allowHttp:process.env.ALLOW_LOCAL_HTTP==='1'});
+  const server=createApp({origin:process.env.APP_ORIGIN,hash:process.env.FOLIO_PASSWORD_HASH,ownerName:process.env.FOLIO_OWNER_USERNAME || 'owner',trustedProxy:process.env.TRUST_FOLIO_PROXY==='1',classifier:createClassifier({apiKey:process.env.OPENAI_API_KEY||'',model:process.env.OPENAI_MODEL||'gpt-4.1-mini'}),aiDailyLimit:Number(process.env.AI_DAILY_LIMIT||100),aiUserDailyLimit:Number(process.env.AI_USER_DAILY_LIMIT||20),dbPath:process.env.DB_PATH || './.runtime/folio.sqlite',allowHttp:process.env.ALLOW_LOCAL_HTTP==='1'});
   server.listen(Number(process.env.PORT || 3000),process.env.BIND || '127.0.0.1',()=>console.log('Folio server ready.'));
   for (const signal of ['SIGTERM','SIGINT']) process.on(signal,()=>server.close());
 }

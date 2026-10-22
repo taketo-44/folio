@@ -2,6 +2,7 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { createMetadataServer } from './metadata.mjs';
+import {securityHeaders} from './http-security.mjs';
 
 const port=Number(process.env.PORT || 4173);
 if(!Number.isInteger(port)||port<1024||port>65535)throw new Error('Invalid preview port.');
@@ -9,10 +10,9 @@ const origin='http://127.0.0.1:'+port;
 const metadata=createMetadataServer(undefined,origin);
 const types={'index.html':'text/html','app.js':'text/javascript','starter-papers.js':'text/javascript','venue-ranks.js':'text/javascript','importance.js':'text/javascript','config.js':'text/javascript','style.css':'text/css'};
 const server=http.createServer(async(req,res)=>{
-  res.setHeader('Cache-Control','no-store');
-  res.setHeader('X-Content-Type-Options','nosniff');
-  const url=new URL(req.url,origin);
+  securityHeaders(res);
   if(req.headers.host!=='127.0.0.1:'+port){res.writeHead(403);res.end('Use '+origin);return}
+  let url;try{url=new URL(req.url,origin)}catch{res.writeHead(400,{'Content-Type':'text/plain; charset=utf-8'});res.end('Invalid request URL.');return}
   if(['/api/eprint','/api/arxiv'].includes(url.pathname)){metadata.emit('request',req,res);return}
   if(!['GET','HEAD'].includes(req.method)){res.writeHead(405);res.end();return}
   const name=url.pathname==='/'?'index.html':url.pathname.slice(1);

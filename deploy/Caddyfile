@@ -1,4 +1,6 @@
 {$FOLIO_DOMAIN} {
 	encode gzip
-	reverse_proxy folio:3000
+	reverse_proxy folio:3000 {
+		header_up X-Folio-Client-IP {remote_host}
+	}
 }

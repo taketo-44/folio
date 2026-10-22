@@ -3,6 +3,7 @@ services:
     build: .
     restart: unless-stopped
     environment:
+      TRUST_FOLIO_PROXY: "1"
       APP_ORIGIN: https://${FOLIO_DOMAIN:?Set FOLIO_DOMAIN in .env}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}

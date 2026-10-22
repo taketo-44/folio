@@ -537,3 +537,11 @@ assert.equal(run("citationOnly({venue:'Unknown',rank:'8.0',metricPreset:true}).r
 assert.equal(run("citationOnly({venue:'TIFS',rank:'',metricPreset:false}).rank"),'');
 assert.doesNotMatch(run("card({id:'x',title:'x',venue:'CCS'})"),/Security Tier|Guofei/);
 console.log('Metric fields: IEEE/CiC aliases, saved presets, manual overrides, reset, venue changes and backup round-trips passed.');
+
+// Malicious citation/backup content must remain text in every HTML sink.
+const xss='\"><img src=x onerror=alert(1)><svg onload=alert(2)>',xssPaper={id:'xss',title:xss,authors:xss,venue:xss,tags:[xss],notes:xss,abstract:xss,status:'unread',importance:3,year:2026,rank:xss,metricType:xss,metricYear:xss,metricSource:'javascript:alert(3)',url:'javascript:alert(4)'};
+context.xssPaper=xssPaper;
+const attackCard=run('card(xssPaper)');assert.doesNotMatch(attackCard,/<img|<svg onload|href="javascript:/);assert.match(attackCard,/&lt;img/);
+run("papers=[xssPaper];details('xss')");const attackDetail=node('#modal-content').innerHTML;assert.doesNotMatch(attackDetail,/<img|<svg onload|href="javascript:/);assert.match(attackDetail,/&lt;img/);
+assert.equal(run("safeUrl('java\\nscript:alert(1)')"),'');assert.equal(run("safeUrl('data:text/html,<script>alert(1)</script>')"),'');
+console.log('Security: malicious citation text is escaped and executable URL schemes are rejected.');

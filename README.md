@@ -43,6 +43,10 @@ Remote mode stores each account’s citations in SQLite. The static preview stor
 
 Conference rank and journal impact factor values require a recorded source and year. There is no licensed Journal Citation Reports integration. Recommendations are topic searches derived from important paper tags, rather than a trained recommendation model.
 
+## Security
+
+See [the local security review](SECURITY.md) for reproduced vulnerabilities, fixes, attack regression tests and deployment requirements.
+
 ## Validation
 
 ```sh
