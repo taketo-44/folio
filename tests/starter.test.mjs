@@ -1,3 +1,4 @@
+import {presetVenueRank} from '../dist/venue-ranks.js';
 import {normalizeImportance} from '../dist/importance.js';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -27,7 +28,7 @@ assert.equal(second.papers[0].added,20000);assert.equal(second.papers[0].updated
 // Exercise the actual browser bootstrap with the production starter factory and an existing empty library.
 function bootstrap(stored=null){
  const nodes=new Map(),document={querySelector(selector){if(!nodes.has(selector))nodes.set(selector,{value:'',innerHTML:'',textContent:'',classList:{add(){},remove(){},toggle(){}},addEventListener(){}});return nodes.get(selector)},querySelectorAll(){return []},addEventListener(){}};
- const context=vm.createContext({normalizeImportance,createStarterLibrary,document,window:{addEventListener(){}},localStorage:{getItem(k){return k==='folio-library-v1'?stored:null}},location:{hash:''},setTimeout,clearTimeout,console});
+ const context=vm.createContext({presetVenueRank,normalizeImportance,createStarterLibrary,document,window:{addEventListener(){}},localStorage:{getItem(k){return k==='folio-library-v1'?stored:null}},location:{hash:''},setTimeout,clearTimeout,console});
  vm.runInContext(readFileSync(new URL('../dist/app.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,''),context);
  return {run:s=>vm.runInContext(s,context),nodes};
 }

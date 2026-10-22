@@ -7,7 +7,7 @@ const port=Number(process.env.PORT || 4173);
 if(!Number.isInteger(port)||port<1024||port>65535)throw new Error('Invalid preview port.');
 const origin='http://127.0.0.1:'+port;
 const metadata=createMetadataServer(undefined,origin);
-const types={'index.html':'text/html','app.js':'text/javascript','starter-papers.js':'text/javascript','importance.js':'text/javascript','config.js':'text/javascript','style.css':'text/css'};
+const types={'index.html':'text/html','app.js':'text/javascript','starter-papers.js':'text/javascript','venue-ranks.js':'text/javascript','importance.js':'text/javascript','config.js':'text/javascript','style.css':'text/css'};
 const server=http.createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store');
   res.setHeader('X-Content-Type-Options','nosniff');

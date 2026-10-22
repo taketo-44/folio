@@ -96,7 +96,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
   })}catch(err){db.close();throw err}
   const publicUser = user => ({id:user.id,username:user.username,role:user.role});
   const snapshot = user => { const row = db.prepare('SELECT revision,data FROM user_libraries WHERE user_id=?').get(user.id); return {...JSON.parse(row.data),revision:row.revision,user:publicUser(user)}; };
-  const assets = new Map(['index.html','app.js','style.css','starter-papers.js','importance.js'].map(name => [name, readFileSync(new URL('../dist/'+name, import.meta.url))]));
+  const assets = new Map(['index.html','app.js','style.css','starter-papers.js','importance.js','venue-ranks.js'].map(name => [name, readFileSync(new URL('../dist/'+name, import.meta.url))]));
   const attempts = new Map();
   let loginBusy = false;
   const reply = (res,status,data) => { res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data)); };
@@ -254,7 +254,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
       if (url.pathname === '/config.js') { res.writeHead(200,{'Content-Type':'text/javascript'});res.end('window.FOLIO_REMOTE = true;');return; }
       const name=url.pathname==='/'?'index.html':url.pathname.slice(1);
       if (!assets.has(name)) fail(404,'Not found.');
-      res.setHeader('Content-Type',{'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','starter-papers.js':'text/javascript; charset=utf-8','importance.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]);
+      res.setHeader('Content-Type',{'index.html':'text/html; charset=utf-8','app.js':'text/javascript; charset=utf-8','starter-papers.js':'text/javascript; charset=utf-8','venue-ranks.js':'text/javascript; charset=utf-8','importance.js':'text/javascript; charset=utf-8','style.css':'text/css; charset=utf-8'}[name]);
       res.end(req.method==='HEAD'?undefined:assets.get(name));
     } catch (err) {
       if (!res.headersSent) reply(res,err.status || 500,{error:err.status?err.message:'Server error. Please try again.'});

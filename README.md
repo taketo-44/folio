@@ -31,6 +31,8 @@ See [WINDOWS-SETUP.md](WINDOWS-SETUP.md) for private HTTPS hosting on a Windows 
 - An unread reading queue with priority-aware and random selection.
 - On-demand scholarly discovery through Crossref, excluding saved papers by DOI and title.
 - BibTeX, RIS, and plain-text citation export.
+- Automatic security venue tiers from [Guofei Gu’s ranking](https://people.engr.tamu.edu/guofei/sec_conf_stat.htm), shown while entering a venue and on saved papers. Acronyms, full names, publisher prefixes, years, and aliases such as CHES/TCHES and CCS/ACM CCS are recognized. These personal conference tiers are separate from manually recorded CORE ranks and journal metrics; TCHES uses the CHES family tier. The source does not specify a ranking year.
+- Automatic ICORE 2026 presets for DATE, ISCAS, DAC, ICCAD, ASP-DAC, FPGA, FPL, FCCM, ICCD, ISLPED, ITC, ETS, VTS, VLSI-SoC, EMSOFT, CODES+ISSS, ISCA, MICRO, and HPCA. Acronyms and full citation names resolve to the same preset. Letter ranks and categories such as Journal Published retain the ICORE source and year.
 - Venue metric fields with source URL and metric year. Metrics without recorded evidence are left empty.
 - Local JSON export/import; newer edits take precedence during a merge.
 

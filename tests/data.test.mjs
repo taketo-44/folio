@@ -1,3 +1,4 @@
+import {presetVenueRank} from '../dist/venue-ranks.js';
 import {normalizeImportance} from '../dist/importance.js';
 import assert from 'node:assert/strict';
 import {seeds as legacySeeds} from './fixtures/legacy-seeds.mjs';
@@ -12,7 +13,7 @@ function node(selector) {
 }
 const memory = new Map();
 const document={querySelector:node,querySelectorAll:()=>[],addEventListener(type,fn){this[type]=fn}};
-const context=vm.createContext({normalizeImportance,createStarterLibrary:()=>({papers:structuredClone(legacySeeds),settings:{}}),document,window:{addEventListener(){}},localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)},location:{hash:'',origin:'http://localhost'},crypto:webcrypto,URL,URLSearchParams,Blob,AbortSignal,structuredClone,setTimeout,clearTimeout,console,indexedDB:{open(){return {}}}});
+const context=vm.createContext({presetVenueRank,normalizeImportance,createStarterLibrary:()=>({papers:structuredClone(legacySeeds),settings:{}}),document,window:{addEventListener(){}},localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)},location:{hash:'',origin:'http://localhost'},crypto:webcrypto,URL,URLSearchParams,Blob,AbortSignal,structuredClone,setTimeout,clearTimeout,console,indexedDB:{open(){return {}}}});
 vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,''),context);
 const run=s=>vm.runInContext(s,context);
 context.localClick=document.click;
@@ -90,7 +91,7 @@ console.log('Passed: filtering, citations, URL safety, backup validation, merge 
 // The phone screen uses the same paper filters and switches back on wider screens.
 let viewportChanged;
 const media={matches:true,addEventListener(type,fn){viewportChanged=fn}};
-const phoneContext=vm.createContext({normalizeImportance,...context,window:{matchMedia:()=>media,addEventListener(){}},localStorage:{getItem:()=>null,setItem(){}},location:{hash:'',origin:'http://localhost'}});
+const phoneContext=vm.createContext({presetVenueRank,normalizeImportance,...context,window:{matchMedia:()=>media,addEventListener(){}},localStorage:{getItem:()=>null,setItem(){}},location:{hash:'',origin:'http://localhost'}});
 vm.runInContext(fs.readFileSync(new URL('../dist/app.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,''),phoneContext);
 const phone=s=>vm.runInContext(s,phoneContext);
 assert.match(node('#main').innerHTML,/Your reading shelf/);
@@ -467,3 +468,36 @@ for(const suffix of ['0','000','0000','-050','050evil','12345678901'])assert.equ
 const leadingCalls=[];context.fetch=async url=>{leadingCalls.push(url);return {ok:true,json:async()=>({title:'Exploiting Intermediate Value Leakage in Dilithium: A Template-Based Approach',authors:'Alexandre Berzati; Andersson Calle Viera; Maya Chartouny; Steven Madec; Damien Vergnaud; David Vigilant',year:2023,venue:'Cryptology ePrint Archive',abstract:'A synthetic abstract for the leading-zero regression.',doi:'',metadataSource:'IACR ePrint',type:'posted-content'})}};
 run("papers=[];settings={};view='library';addMode='url';addPaper()");node('#paper-url').value='https://eprint.iacr.org/2023/050';await run('lookupMetadata()');assert.equal(node('#paper-title').value,'Exploiting Intermediate Value Leakage in Dilithium: A Template-Based Approach');node('#paper-tags').value='PQC/ML-DSA';node('#paper-status').value='unread';await run('submitAdd({preventDefault(){}})');assert.equal(run('papers.length'),1);assert.equal(run('papers[0].url'),'https://eprint.iacr.org/2023/050');assert.deepEqual(leadingCalls,['/api/eprint?id=2023%2F050']);
 console.log('Leading-zero ePrint URLs: recognition, lookup and citation save passed.');
+
+// Preset tiers appear live and always follow the current venue, independently of manual metrics.
+run("addMode='manual';renderAdd()");
+node('#paper-venue').value='TCHES';node('#paper-venue').oninput();
+assert.match(node('#paper-venue-rank').innerHTML,/Security Tier 2/);
+node('#paper-venue').value='ACM CCS';node('#paper-venue').oninput();
+assert.match(node('#paper-venue-rank').innerHTML,/Security Tier 1/);
+node('#paper-venue').value='arXiv';node('#paper-venue').oninput();
+assert.doesNotMatch(node('#paper-venue-rank').innerHTML,/Security Tier/);
+assert.match(run("card({id:'preset',title:'Existing paper',venue:'TCHES',rank:'Q1',metricType:'SJR quartile',metricYear:'2025'})"),/Security Tier 2/);
+assert.match(run("card({id:'preset',title:'Existing paper',venue:'TCHES',rank:'Q1',metricType:'SJR quartile',metricYear:'2025'})"),/SJR quartile Q1/);
+run("papers=[{id:'preset',title:'Existing paper',authors:'',venue:'TCHES',tags:[],notes:''}];details('preset')");
+node('#detail-venue').value='IEEE European Symposium on Security and Privacy';node('#detail-venue').oninput();
+assert.match(node('#detail-venue-rank').innerHTML,/EuroS&amp;P · Security Tier 2/);
+node('#detail-venue').value='CRYPTO';node('#detail-venue').oninput();
+assert.match(node('#detail-venue-rank').innerHTML,/CRYPTO · Security Tier 1/);
+console.log('Security ranks: live add/edit previews, existing papers and preservation of manual metrics passed.');
+
+// Hardware venues use the same live previews without being labelled as security tiers.
+run("addMode='manual';renderAdd()");
+node('#paper-venue').value='DATE 2026';node('#paper-venue').oninput();
+assert.match(node('#paper-venue-rank').innerHTML,/DATE · ICORE rank A · 2026/);
+assert.doesNotMatch(node('#paper-venue-rank').innerHTML,/Security Tier|Guofei/);
+node('#paper-venue').value='IEEE ISCAS';node('#paper-venue').oninput();
+assert.match(node('#paper-venue-rank').innerHTML,/ISCAS · ICORE rank C · 2026/);
+assert.match(run("card({id:'hardware',title:'Existing hardware paper',venue:'ISCAS',rank:'Q1',metricType:'SJR quartile',metricYear:'2025'})"),/ISCAS · ICORE rank C · 2026/);
+assert.match(run("card({id:'hardware',title:'Existing hardware paper',venue:'ISCAS',rank:'Q1',metricType:'SJR quartile',metricYear:'2025'})"),/SJR quartile Q1/);
+run("papers=[{id:'hardware',title:'Hardware paper',authors:'',venue:'DATE',tags:[],notes:''}];details('hardware')");
+node('#detail-venue').value='ASPDAC';node('#detail-venue').oninput();
+assert.match(node('#detail-venue-rank').innerHTML,/ASP-DAC · ICORE rank B · 2026/);
+node('#detail-venue').value='Unknown venue';node('#detail-venue').oninput();
+assert.doesNotMatch(node('#detail-venue-rank').innerHTML,/ICORE rank/);
+console.log('Technical ranks: live add/edit previews, existing papers, source labels and manual metric preservation passed.');

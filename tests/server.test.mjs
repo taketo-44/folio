@@ -49,6 +49,7 @@ try{
   assert.equal((await request('/api/eprint?id=2006/139')).status,200);
   assert.equal((await request('/api/eprint?id=../139')).status,400);
   assert.match(await (await request('/config.js')).text(),/FOLIO_REMOTE = true/);
+  const venueAsset=await request('/venue-ranks.js');assert.equal(venueAsset.status,200);assert.match(venueAsset.headers.get('content-type'),/text\/javascript/);assert.match(await venueAsset.text(),/export function securityVenueRank/);
   for(const path of ['/.env','/server/app.mjs','/.runtime/folio.sqlite','/README.md'])assert.equal((await request(path)).status,404);
   const badHost=await new Promise((resolve,reject)=>{const r=http.get(origin+'/',{headers:{Host:'evil.example'}},res=>{res.resume();resolve(res.statusCode)});r.on('error',reject)});assert.equal(badHost,403);
   await close();await open(port);
