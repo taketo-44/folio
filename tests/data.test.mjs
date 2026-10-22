@@ -472,18 +472,18 @@ console.log('Leading-zero ePrint URLs: recognition, lookup and citation save pas
 // Preset tiers appear live and always follow the current venue, independently of manual metrics.
 run("addMode='manual';renderAdd()");
 node('#paper-venue').value='TCHES';node('#paper-venue').oninput();
-assert.match(node('#paper-venue-rank').innerHTML,/Security Tier 2/);
+assert.match(node('#paper-venue-rank').innerHTML,/ICORE rank A · 2026/);
 node('#paper-venue').value='ACM CCS';node('#paper-venue').oninput();
-assert.match(node('#paper-venue-rank').innerHTML,/Security Tier 1/);
+assert.match(node('#paper-venue-rank').innerHTML,/ICORE rank A\* · 2026/);
 node('#paper-venue').value='arXiv';node('#paper-venue').oninput();
 assert.doesNotMatch(node('#paper-venue-rank').innerHTML,/Security Tier/);
-assert.match(run("card({id:'preset',title:'Existing paper',venue:'TCHES',rank:'Q1',metricType:'SJR quartile',metricYear:'2025'})"),/Security Tier 2/);
+assert.doesNotMatch(run("card({id:'preset',title:'Existing paper',venue:'TCHES',rank:'Q1',metricType:'SJR quartile',metricYear:'2025'})"),/ICORE rank/);
 assert.match(run("card({id:'preset',title:'Existing paper',venue:'TCHES',rank:'Q1',metricType:'SJR quartile',metricYear:'2025'})"),/SJR quartile Q1/);
 run("papers=[{id:'preset',title:'Existing paper',authors:'',venue:'TCHES',tags:[],notes:''}];details('preset')");
 node('#detail-venue').value='IEEE European Symposium on Security and Privacy';node('#detail-venue').oninput();
-assert.match(node('#detail-venue-rank').innerHTML,/EuroS&amp;P · Security Tier 2/);
+assert.match(node('#detail-venue-rank').innerHTML,/EuroS&amp;P · ICORE rank A · 2026/);
 node('#detail-venue').value='CRYPTO';node('#detail-venue').oninput();
-assert.match(node('#detail-venue-rank').innerHTML,/CRYPTO · Security Tier 1/);
+assert.match(node('#detail-venue-rank').innerHTML,/CRYPTO · ICORE rank A\* · 2026/);
 console.log('Security ranks: live add/edit previews, existing papers and preservation of manual metrics passed.');
 
 // Hardware venues use the same live previews without being labelled as security tiers.
@@ -493,7 +493,7 @@ assert.match(node('#paper-venue-rank').innerHTML,/DATE · ICORE rank A · 2026/)
 assert.doesNotMatch(node('#paper-venue-rank').innerHTML,/Security Tier|Guofei/);
 node('#paper-venue').value='IEEE ISCAS';node('#paper-venue').oninput();
 assert.match(node('#paper-venue-rank').innerHTML,/ISCAS · ICORE rank C · 2026/);
-assert.match(run("card({id:'hardware',title:'Existing hardware paper',venue:'ISCAS',rank:'Q1',metricType:'SJR quartile',metricYear:'2025'})"),/ISCAS · ICORE rank C · 2026/);
+assert.match(run("card({id:'hardware',title:'Existing hardware paper',venue:'ISCAS'})"),/ICORE rank C · 2026/);
 assert.match(run("card({id:'hardware',title:'Existing hardware paper',venue:'ISCAS',rank:'Q1',metricType:'SJR quartile',metricYear:'2025'})"),/SJR quartile Q1/);
 run("papers=[{id:'hardware',title:'Hardware paper',authors:'',venue:'DATE',tags:[],notes:''}];details('hardware')");
 node('#detail-venue').value='ASPDAC';node('#detail-venue').oninput();
@@ -501,3 +501,39 @@ assert.match(node('#detail-venue-rank').innerHTML,/ASP-DAC · ICORE rank B · 20
 node('#detail-venue').value='Unknown venue';node('#detail-venue').oninput();
 assert.doesNotMatch(node('#detail-venue-rank').innerHTML,/ICORE rank/);
 console.log('Technical ranks: live add/edit previews, existing papers, source labels and manual metric preservation passed.');
+
+// Metrics are real editable citation fields, persist, and follow venue changes only in preset mode.
+run("addMode='manual';renderAdd()");
+node('#paper-venue').value='TIFS';node('#paper-venue').oninput();
+assert.equal(node('#paper-metric-type').value,'Journal impact factor');
+assert.equal(node('#paper-metric-value').value,'8.0');
+assert.equal(node('#paper-metric-year').value,'2024');
+assert.match(node('#paper-metric-source').value,/open\.ieee\.org/);
+node('#paper-venue').value='CiC';node('#paper-venue').oninput();
+assert.match(node('#paper-venue-rank').innerHTML,/IACR CiC/);
+assert.equal(node('#paper-metric-value').value,'');assert.equal(node('#paper-metric-year').value,'');
+node('#paper-venue').value='DATE';node('#paper-venue').oninput();
+node('#paper-metric-value').value='Custom';node('#paper-metric-value').oninput();
+node('#paper-venue').value='TIFS';node('#paper-venue').oninput();
+assert.equal(node('#paper-metric-value').value,'Custom');
+node('#paper-metric-preset').onclick();assert.equal(node('#paper-metric-value').value,'8.0');
+node('#paper-url').value='';node('#paper-title').value='Metric persistence';node('#paper-authors').value='A';node('#paper-year').value='2026';node('#paper-tags').value='';node('#paper-abstract').value='';node('#paper-status').value='unread';
+run("papers=[];settings={};lookedUpMetadata=null");await run('submitAdd({preventDefault(){}})');
+assert.equal(run('papers[0].metricType'),'Journal impact factor');assert.equal(run('papers[0].rank'),'8.0');assert.equal(run('papers[0].metricYear'),'2024');assert.equal(run('papers[0].metricPreset'),true);
+assert.equal(JSON.parse(memory.get('folio-library-v1'))[0].rank,'8.0');
+const metricBackup=run('validateBackup({version:1,papers})');assert.equal(metricBackup[0].metricPreset,true);
+run('details(papers[0].id)');
+node('#detail-venue').value='TIFS';node('#detail-venue').oninput();
+assert.equal(node('#metric-value').value,'8.0');
+node('#metric-value').value='9.1';node('#metric-value').oninput();
+node('#metric-year').value='2025';node('#metric-source').value='https://example.com/manual-metric';
+node('#detail-title').value='Metric persistence';node('#detail-authors').value='A';node('#detail-year').value='2026';node('#detail-tags').value='';node('#detail-notes').value='';node('#detail-url').value='';
+await node('#detail-form').onsubmit({preventDefault(){}});
+assert.equal(run('papers[0].rank'),'9.1');assert.equal(run('papers[0].metricPreset'),false);
+assert.equal(run("citationOnly({...papers[0],venue:'DATE'}).rank"),'9.1');
+assert.equal(run("citationOnly({venue:'DATE'}).rank"),'A');
+assert.equal(run("citationOnly({venue:'TIFS',rank:'A',metricPreset:true}).rank"),'8.0');
+assert.equal(run("citationOnly({venue:'Unknown',rank:'8.0',metricPreset:true}).rank"),'');
+assert.equal(run("citationOnly({venue:'TIFS',rank:'',metricPreset:false}).rank"),'');
+assert.doesNotMatch(run("card({id:'x',title:'x',venue:'CCS'})"),/Security Tier|Guofei/);
+console.log('Metric fields: IEEE/CiC aliases, saved presets, manual overrides, reset, venue changes and backup round-trips passed.');

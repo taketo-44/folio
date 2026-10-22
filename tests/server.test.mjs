@@ -32,12 +32,14 @@ try{
   cookie=login.headers.get('set-cookie').split(';')[0];csrf=(await login.json()).csrf;
   const initial=await (await request('/api/library')).json();assert.equal(initial.papers.length,5);assert.ok(initial.papers.every(p=>p.sample&&p.status==='unread'));
   const starterAsset=await request('/starter-papers.js');assert.equal(starterAsset.status,200);assert.match(starterAsset.headers.get('content-type'),/javascript/);
-  const paper={id:'p1',title:'A paper',authors:'An Author',tags:['Cryptography'],status:'unread',importance:'high',notes:'My notes',drivePdfId:'drive-file-1',pdfId:'device-cache',added:1,updated:1};
+  const paper={id:'p1',title:'A paper',authors:'An Author',tags:['Cryptography'],status:'unread',importance:'high',notes:'My notes',venue:'IEEE TIFS',rank:'8.0',metricType:'Journal impact factor',metricYear:'2024',metricSource:'https://open.ieee.org/wp-content/uploads/IEEE-Title-List-January-2026.pdf',metricPreset:true,drivePdfId:'drive-file-1',pdfId:'device-cache',added:1,updated:1};
   const payload={revision:0,papers:[paper],settings:{collections:['Cryptography'],clientId:'123.apps.googleusercontent.com'}};
   assert.equal((await request('/api/library',{method:'PUT',headers:{'X-CSRF-Token':'bad'},body:JSON.stringify(payload)})).status,403);
   const saved=await request('/api/library',{method:'PUT',body:JSON.stringify(payload)});assert.equal(saved.status,200);
   const data=await saved.json();assert.equal(data.revision,1);assert.equal(data.papers[0].drivePdfId,undefined);assert.equal(data.settings.clientId,undefined);assert.equal(data.papers[0].pdfId,undefined);
   assert.equal(data.papers[0].importance,5,'legacy high becomes five stars');
+  assert.equal(data.papers[0].metricPreset,true);assert.equal(data.papers[0].rank,'8.0');assert.equal(data.papers[0].metricYear,'2024');
+  assert.equal((await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,revision:1,papers:[{...paper,metricPreset:'true'}]})})).status,400);
   for(const importance of [-1,6,2.5,'4',null])assert.equal((await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,revision:1,papers:[{...paper,importance}]})})).status,400);
   const conflict=await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,papers:[]})});assert.equal(conflict.status,409);assert.equal((await conflict.json()).library.papers.length,1);
   assert.equal((await request('/api/library',{method:'PUT',body:JSON.stringify({...payload,revision:1,papers:[{...paper,title:''}]})})).status,400);

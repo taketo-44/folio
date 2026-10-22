@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import {securityVenues,securityVenueRank,securityRankSource,technicalVenues,presetVenueRank} from '../dist/venue-ranks.js';
+import {securityVenues,securityVenueRank,journalVenues,technicalVenues,presetVenueRank} from '../dist/venue-ranks.js';
 
 for(const venue of securityVenues){
  for(const alias of venue.aliases){
   const result=securityVenueRank(alias);
   assert.equal(result?.name,venue.name,alias);
-  assert.equal(result?.tier,venue.tier,alias);
-  assert.equal(result?.source,securityRankSource);
+  assert.equal(result?.rank,venue.rank,alias);
+  assert.equal(result?.year,venue.year,alias);
+  assert.equal(result?.tier,undefined);
  }
 }
 for(const [input,name,tier] of [
@@ -24,7 +25,7 @@ for(const [input,name,tier] of [
  ['IFIP WG 11.9','IFIP WG 11.9',3],['SecDev','SecDev',null]
 ]){
  const result=securityVenueRank(input);
- assert.equal(result?.name,name,input);assert.equal(result?.tier,tier,input);
+ assert.equal(result?.name,name,input);assert.equal(result?.tier,undefined,input);
 }
 for(const input of ['',null,'arXiv','Cryptology ePrint Archive','IEEE TIFS',
  'A cryptographic host system','CCS unrelated conference','SACMAT workshop',
@@ -65,6 +66,13 @@ for(const input of ['Update date','Micro systems journal','ISCA unrelated event'
 assert.equal(presetVenueRank('ISCAS').name,'ISCAS');
 assert.equal(presetVenueRank('ISCA').name,'ISCA');
 assert.equal(presetVenueRank('ISC').name,'ISC');
-assert.equal(presetVenueRank('CCS').tier,1);
-assert.equal(presetVenueRank('TCHES').tier,2);
+assert.equal(presetVenueRank('CCS').rank,'A*');
+assert.equal(presetVenueRank('TCHES').rank,'A');
 console.log('Technical venue presets: all aliases, ICORE ranks/categories, editions, citation names and acronym boundaries passed.');
+
+for(const venue of journalVenues)for(const alias of venue.aliases){const result=presetVenueRank(alias);assert.equal(result.name,venue.name,alias);assert.equal(result.rank,venue.rank,alias);assert.equal(result.year,venue.year,alias)}
+for(const alias of ['TIFS','IEEE TIFS','T-IFS','Transaction of Information Forensics & Security']){const metric=presetVenueRank(alias);assert.equal(metric.rank,'8.0');assert.equal(metric.year,2024);assert.equal(metric.metricType,'Journal impact factor')}
+for(const alias of ['CiC','IACR CiC','Communications in Cryptology','IACR Communications in Cryptology']){const venue=presetVenueRank(alias);assert.equal(venue.name,'IACR CiC');assert.equal(venue.rank,undefined);assert.equal(venue.year,undefined)}
+console.log('Journal aliases, dated IEEE impact factors and CiC without invented metrics passed.');
+
+for(const alias of ['CC','IACR CC'])assert.equal(presetVenueRank(alias),null,alias);

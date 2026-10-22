@@ -37,10 +37,11 @@ function validate(data) {
     }
     for (const field of ['added','updated']) if (p[field] !== undefined && (!Number.isSafeInteger(p[field]) || p[field]<0)) fail(400, 'Invalid timestamp.');
     if (p.year !== undefined && p.year !== '' && (!Number.isInteger(p.year) || p.year<1400 || p.year>2100)) fail(400, 'Invalid publication year.');
+    if (p.metricPreset !== undefined && typeof p.metricPreset !== 'boolean') fail(400, 'Invalid metric preset flag.');
     if (p.metricYear !== undefined && typeof p.metricYear !== 'string' && typeof p.metricYear !== 'number') fail(400, 'Invalid metric year.');
     if (p.sample !== undefined && typeof p.sample !== 'boolean') fail(400, 'Invalid sample flag.');
     // Only persist citation metadata, flags, links, and notes.
-    const allowed = new Set(['id','title','authors','venue','notes','doi','url','rank','metricType','metricSource','abstract','type','metadataSource','status','importance','tags','year','metricYear','added','updated','sample']);
+    const allowed = new Set(['id','title','authors','venue','notes','doi','url','rank','metricType','metricSource','abstract','type','metadataSource','status','importance','tags','year','metricYear','added','updated','sample','metricPreset']);
     for (const field of Object.keys(p)) if (!allowed.has(field)) delete p[field];
   }
   const s = data.settings;

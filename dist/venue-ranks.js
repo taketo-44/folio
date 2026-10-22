@@ -1,61 +1,60 @@
-// Guofei Gu's personal ranking, retrieved 2026-10-22. No ranking year is published.
-export const securityRankSource='https://people.engr.tamu.edu/guofei/sec_conf_stat.htm';
-// Aliases identify venue families; TCHES uses the CHES conference tier.
+// Venue coverage originally based on Guofei Gu's security venue list.
+// Metrics below use independently verified, dated sources; no personal tiers.
 export const securityVenues=[
- [1,'S&P','IEEE Symposium on Security and Privacy','S&P','IEEE S&P','Oakland','IEEE SP'],
- [1,'CCS','ACM Conference on Computer and Communications Security','CCS','ACM CCS'],
- [1,'USENIX Security','USENIX Security Symposium','USENIX Security','Security'],
- [1,'NDSS','Network and Distributed System Security Symposium','NDSS','Network and Distributed Systems Security Symposium'],
- [1,'CRYPTO','International Cryptology Conference','CRYPTO','Advances in Cryptology CRYPTO'],
- [1,'EUROCRYPT','European Cryptology Conference','EUROCRYPT','Advances in Cryptology EUROCRYPT'],
- [2,'ESORICS','European Symposium on Research in Computer Security','ESORICS'],
- [2,'RAID','International Symposium on Recent Advances in Intrusion Detection','RAID','International Symposium on Research in Attacks Intrusions and Defenses'],
- [2,'ACSAC','Annual Computer Security Applications Conference','ACSAC'],
- [2,'DSN','International Conference on Dependable Systems and Networks','DSN'],
- [2,'IMC','Internet Measurement Conference','IMC'],
- [2,'ASIACCS','ACM Symposium on Information Computer and Communications Security','ASIACCS','Asia CCS','AsiaCCS'],
- [2,'PETS','Privacy Enhancing Technologies Symposium','PETS','PoPETs','Proceedings on Privacy Enhancing Technologies'],
- [2,'EuroS&P','IEEE European Symposium on Security and Privacy','EuroS&P','Euro S&P','EuroSP','IEEE Euro SP'],
- [2,'CSF','IEEE Computer Security Foundations Symposium','CSF','CSFW','Computer Security Foundations Workshop'],
- [2,'SOUPS','Symposium on Usable Privacy and Security','SOUPS'],
- [2,'ASIACRYPT','International Conference on the Theory and Application of Cryptology and Information Security','ASIACRYPT','Advances in Cryptology ASIACRYPT'],
- [2,'TCC','Theory of Cryptography Conference','TCC'],
- [2,'CHES / TCHES','Conference on Cryptographic Hardware and Embedded Systems','CHES','TCHES','CHES TCHES','Cryptographic Hardware and Embedded Systems','IACR Transactions on Cryptographic Hardware and Embedded Systems','Transactions on CHES'],
- [2,'FC','International Conference on Financial Cryptography and Data Security','FC','Financial Cryptography and Data Security','Financial Cryptography'],
- [3,'SecureComm','International Conference on Security and Privacy in Communication Networks','SecureComm','Security and Privacy in Communication Networks'],
- [3,'CNS','IEEE Conference on Communications and Network Security','CNS'],
- [3,'DIMVA','Detection of Intrusions and Malware and Vulnerability Assessment','DIMVA'],
- [3,'ACNS','International Conference on Applied Cryptography and Network Security','ACNS','Applied Cryptography and Network Security'],
- [3,'SAC','ACM Symposium on Applied Computing','SAC'],
- [3,'ACISP','Australasia Conference on Information Security and Privacy','ACISP','Australasian Conference on Information Security and Privacy'],
- [3,'ICICS','International Conference on Information and Communications Security','ICICS'],
- [3,'ISC','Information Security Conference','ISC'],
- [3,'ICISC','International Conference on Information Security and Cryptology','ICISC'],
- [3,'SACMAT','ACM Symposium on Access Control Models and Technologies','SACMAT'],
- [3,'IFIP SEC','IFIP International Information Security Conference','IFIP SEC'],
- [3,'WiSec','ACM Conference on Wireless Network Security','WiSec','WiSe','SASN','ACM Workshop on Wireless Security','ACM Workshop on Security of Ad Hoc and Sensor Networks','ACM Conference on Security and Privacy in Wireless and Mobile Networks'],
- [3,'IFIP WG 11.9','IFIP WG 11.9 International Conference on Digital Forensics','IFIP WG 11.9'],
- [3,'DFRWS','Digital Forensic Research Conference','DFRWS','Digital Forensics Research Conference','Digital Forensic Research Workshop'],
- [3,'CODASPY','ACM Conference on Data and Application Security and Privacy','CODASPY'],
- [3,'CANS','Cryptology and Network Security Conference','CANS','Cryptology and Network Security'],
- [3,'PST','International Conference on Privacy Security and Trust','PST'],
- [3,'FSE','Conference on Fast Software Encryption','FSE','Fast Software Encryption'],
- [3,'PKC','International Conference on Practice and Theory in Public Key Cryptography','PKC','Public Key Cryptography'],
- [3,'CT-RSA','RSA Conference Cryptographers Track','CT-RSA','CT RSA','Cryptographers Track at the RSA Conference'],
- [3,'HOST','IEEE International Symposium on Hardware Oriented Security and Trust','HOST'],
- [3,'HotSec','USENIX Summit on Hot Topics in Security','HotSec','USENIX Workshop on Hot Topics in Security'],
- [3,'NSPW','New Security Paradigms Workshop','NSPW'],
- [3,'IH&MMSec','Workshop on Information Hiding and Multimedia Security','IH&MMSec','IH MMSec'],
- [3,'IWIA','IEEE International Information Assurance Workshop','IWIA'],
- [null,'SecDev','IEEE Secure Development Conference','SecDev'],
- [null,'ISPEC','Information Security Practice and Experience Conference','ISPEC','Information Security Practice and Experience'],
- [null,'NordSec','Nordic Conference on Secure IT Systems','NordSec'],
- [null,'ICITS','International Conference on Information Theoretic Security','ICITS'],
- [null,'MALCON','International Conference on Malicious and Unwanted Software','MALCON']
-].map(([tier,name,...aliases])=>({tier,name,aliases}));
+ ['S&P','IEEE Symposium on Security and Privacy','S&P','IEEE S&P','Oakland','IEEE SP'],
+ ['CCS','ACM Conference on Computer and Communications Security','CCS','ACM CCS'],
+ ['USENIX Security','USENIX Security Symposium','USENIX Security','Security'],
+ ['NDSS','Network and Distributed System Security Symposium','NDSS','Network and Distributed Systems Security Symposium'],
+ ['CRYPTO','International Cryptology Conference','CRYPTO','Advances in Cryptology CRYPTO'],
+ ['EUROCRYPT','European Cryptology Conference','EUROCRYPT','Advances in Cryptology EUROCRYPT'],
+ ['ESORICS','European Symposium on Research in Computer Security','ESORICS'],
+ ['RAID','International Symposium on Recent Advances in Intrusion Detection','RAID','International Symposium on Research in Attacks Intrusions and Defenses'],
+ ['ACSAC','Annual Computer Security Applications Conference','ACSAC'],
+ ['DSN','International Conference on Dependable Systems and Networks','DSN'],
+ ['IMC','Internet Measurement Conference','IMC'],
+ ['ASIACCS','ACM Symposium on Information Computer and Communications Security','ASIACCS','Asia CCS','AsiaCCS'],
+ ['PETS','Privacy Enhancing Technologies Symposium','PETS','PoPETs','Proceedings on Privacy Enhancing Technologies'],
+ ['EuroS&P','IEEE European Symposium on Security and Privacy','EuroS&P','Euro S&P','EuroSP','IEEE Euro SP'],
+ ['CSF','IEEE Computer Security Foundations Symposium','CSF','CSFW','Computer Security Foundations Workshop'],
+ ['SOUPS','Symposium on Usable Privacy and Security','SOUPS'],
+ ['ASIACRYPT','International Conference on the Theory and Application of Cryptology and Information Security','ASIACRYPT','Advances in Cryptology ASIACRYPT'],
+ ['TCC','Theory of Cryptography Conference','TCC'],
+ ['CHES / TCHES','Conference on Cryptographic Hardware and Embedded Systems','CHES','TCHES','CHES TCHES','Cryptographic Hardware and Embedded Systems','IACR Transactions on Cryptographic Hardware and Embedded Systems','Transactions on CHES'],
+ ['FC','International Conference on Financial Cryptography and Data Security','FC','Financial Cryptography and Data Security','Financial Cryptography'],
+ ['SecureComm','International Conference on Security and Privacy in Communication Networks','SecureComm','Security and Privacy in Communication Networks'],
+ ['CNS','IEEE Conference on Communications and Network Security','CNS'],
+ ['DIMVA','Detection of Intrusions and Malware and Vulnerability Assessment','DIMVA'],
+ ['ACNS','International Conference on Applied Cryptography and Network Security','ACNS','Applied Cryptography and Network Security'],
+ ['SAC','ACM Symposium on Applied Computing','SAC'],
+ ['ACISP','Australasia Conference on Information Security and Privacy','ACISP','Australasian Conference on Information Security and Privacy'],
+ ['ICICS','International Conference on Information and Communications Security','ICICS'],
+ ['ISC','Information Security Conference','ISC'],
+ ['ICISC','International Conference on Information Security and Cryptology','ICISC'],
+ ['SACMAT','ACM Symposium on Access Control Models and Technologies','SACMAT'],
+ ['IFIP SEC','IFIP International Information Security Conference','IFIP SEC'],
+ ['WiSec','ACM Conference on Wireless Network Security','WiSec','WiSe','SASN','ACM Workshop on Wireless Security','ACM Workshop on Security of Ad Hoc and Sensor Networks','ACM Conference on Security and Privacy in Wireless and Mobile Networks'],
+ ['IFIP WG 11.9','IFIP WG 11.9 International Conference on Digital Forensics','IFIP WG 11.9'],
+ ['DFRWS','Digital Forensic Research Conference','DFRWS','Digital Forensics Research Conference','Digital Forensic Research Workshop'],
+ ['CODASPY','ACM Conference on Data and Application Security and Privacy','CODASPY'],
+ ['CANS','Cryptology and Network Security Conference','CANS','Cryptology and Network Security'],
+ ['PST','International Conference on Privacy Security and Trust','PST'],
+ ['FSE','Conference on Fast Software Encryption','FSE','Fast Software Encryption'],
+ ['PKC','International Conference on Practice and Theory in Public Key Cryptography','PKC','Public Key Cryptography'],
+ ['CT-RSA','RSA Conference Cryptographers Track','CT-RSA','CT RSA','Cryptographers Track at the RSA Conference'],
+ ['HOST','IEEE International Symposium on Hardware Oriented Security and Trust','HOST'],
+ ['HotSec','USENIX Summit on Hot Topics in Security','HotSec','USENIX Workshop on Hot Topics in Security'],
+ ['NSPW','New Security Paradigms Workshop','NSPW'],
+ ['IH&MMSec','Workshop on Information Hiding and Multimedia Security','IH&MMSec','IH MMSec'],
+ ['IWIA','IEEE International Information Assurance Workshop','IWIA'],
+ ['SecDev','IEEE Secure Development Conference','SecDev'],
+ ['ISPEC','Information Security Practice and Experience Conference','ISPEC','Information Security Practice and Experience'],
+ ['NordSec','Nordic Conference on Secure IT Systems','NordSec'],
+ ['ICITS','International Conference on Information Theoretic Security','ICITS'],
+ ['MALCON','International Conference on Malicious and Unwanted Software','MALCON']
+].map(([name,...aliases])=>({name,aliases}));
 
 // Hardware, circuits, EDA and architecture presets from the ICORE 2026 portal.
-// Keep its letter ranks and publication categories separate from security tiers.
+// Retain publication categories exactly as recorded by ICORE.
 export const technicalVenues=[
  ['A','DATE','Design Automation and Test in Europe','Design Automation and Test in Europe Conference','Design Automation and Test in Europe Conference and Exhibition'],
  ['C','ISCAS','IEEE International Symposium on Circuits and Systems'],
@@ -80,6 +79,32 @@ export const technicalVenues=[
  source:`https://portal.core.edu.au/conf-ranks/?by=acronym&search=${encodeURIComponent(name==='ASP-DAC'?'ASPDAC':name)}&source=ICORE2026`,
  aliases:[name,...aliases]}));
 
+// Verified against the ICORE 2026 portal, retrieved 2026-10-22.
+const securityMetrics={
+ 'S&P':'A*',CCS:'A*','USENIX Security':'A*',NDSS:'A*',CRYPTO:'A*',EUROCRYPT:'A*',
+ ESORICS:'A',RAID:'A',ACSAC:'A',DSN:'A',IMC:'A',ASIACCS:'A',PETS:'A','EuroS&P':'A',CSF:'A',SOUPS:'A',
+ ASIACRYPT:'A',TCC:'B','CHES / TCHES':'A',FC:'A',SecureComm:'C',DIMVA:'B',ACNS:'B',
+ SAC:'Multiconference',ACISP:'Australasian B',ICICS:'C',ISC:'C',ICISC:'National: Korea',SACMAT:'C',
+ 'IFIP SEC':'B',WiSec:'B',CANS:'B',PST:'C',FSE:'B',PKC:'B','CT-RSA':'B',NSPW:'C','IH&MMSec':'C',ISPEC:'C'
+};
+const coreAcronyms={'S&P':'SP','USENIX Security':'USENIX-Security','CHES / TCHES':'CHES',WiSec:'ACM_WiSec'};
+for(const venue of securityVenues){
+ if(!securityMetrics[venue.name])continue;
+ Object.assign(venue,{rank:securityMetrics[venue.name],metricType:'ICORE rank',year:2026,
+  source:`https://portal.core.edu.au/conf-ranks/?by=acronym&search=${encodeURIComponent(coreAcronyms[venue.name]||venue.name)}&source=ICORE2026`});
+}
+// 2024 JIF values from IEEE's January 2026 title list (2025 JCR release).
+const ieeeJournalSource='https://open.ieee.org/wp-content/uploads/IEEE-Title-List-January-2026.pdf';
+export const journalVenues=[
+ ['8.0','IEEE TIFS','TIFS','T-IFS','IEEE Transactions on Information Forensics and Security','IEEE Trans. Inf. Forensics Security','IEEE Trans. Inf. Forensics Secur.'],
+ ['7.5','IEEE TDSC','TDSC','T-DSC','IEEE Transactions on Dependable and Secure Computing'],
+ ['2.9','IEEE TCAD','TCAD','T-CAD','IEEE Transactions on Computer Aided Design of Integrated Circuits and Systems'],
+ ['3.8','IEEE TC','TC','T-C','IEEE Transactions on Computers'],
+ ['2.9','IEEE TIT','TIT','T-IT','IEEE Transactions on Information Theory']
+].map(([rank,name,...aliases])=>({name,rank,metricType:'Journal impact factor',year:2024,source:ieeeJournalSource,aliases:[name,...aliases]}));
+// Recognized journal; no verified dated metric is available in these sources.
+journalVenues.push({name:'IACR CiC',aliases:['CiC','IACR CiC','Communications in Cryptology','IACR Communications in Cryptology'],source:'https://cic.iacr.org/'});
+
 function normalizeVenue(value){
  return String(value||'').normalize('NFKC').toLowerCase()
   .replace(/\btransactions?\s+(?:of|on)\b/g,'transactions on')
@@ -94,7 +119,7 @@ function citationName(value){
 }
 const venueAliases=securityVenues.flatMap(venue=>venue.aliases.map(alias=>({venue,alias:citationName(alias)})))
  .sort((a,b)=>b.alias.length-a.alias.length);
-const technicalAliases=technicalVenues.flatMap(venue=>venue.aliases.map(alias=>({venue,alias:citationName(alias)})))
+const technicalAliases=[...technicalVenues,...journalVenues].flatMap(venue=>venue.aliases.map(alias=>({venue,alias:citationName(alias)})))
  .sort((a,b)=>b.alias.length-a.alias.length);
 function matchVenue(value,aliases){
  const name=citationName(value);
@@ -105,7 +130,7 @@ function matchVenue(value,aliases){
 }
 export function securityVenueRank(value){
  const match=matchVenue(value,venueAliases);
- return match?{name:match.name,tier:match.tier,source:securityRankSource}:null;
+ if(!match)return null;const {aliases,...metric}=match;return metric;
 }
 export function presetVenueRank(value){
  const match=matchVenue(value,technicalAliases);
