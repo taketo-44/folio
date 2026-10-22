@@ -35,6 +35,7 @@ See [WINDOWS-SETUP.md](WINDOWS-SETUP.md) for private HTTPS hosting on a Windows 
 - Automatic ICORE 2026 presets for DATE, ISCAS, DAC, ICCAD, ASP-DAC, FPGA, FPL, FCCM, ICCD, ISLPED, ITC, ETS, VTS, VLSI-SoC, EMSOFT, CODES+ISSS, ISCA, MICRO, and HPCA. Acronyms and full citation names resolve to the same preset. Letter ranks and categories such as Journal Published retain the ICORE source and year.
 - Editable Metric, Value, Metric year, and Source URL fields in both Add paper and paper details. Presets populate these fields and apply to existing papers with no manually recorded metric. Manual edits are preserved; Use venue preset restores automatic values. Automatic values follow venue edits and survive backup/export and server sync.
 - IEEE journal presets for TIFS, TDSC, TCAD, TC, and TIT use 2024 Journal Impact Factors from IEEE’s January 2026 title list (the metric year is 2024, not the list publication year). CiC/IACR CiC/Communications in Cryptology is recognized without inventing an unverified metric or year.
+- Communications and networking journal presets include TCOM/TCOMM, TWC, JSAC, COMST, Communications Letters, WCL, OJCOMS, TCCN, TGCN, TVT, TON (including the IEEE/ACM title), TNSM, TNSE, and IoTJ. Full titles, standard abbreviations, punctuation and year variants resolve to their 2024 impact factor and source.
 - Local JSON export/import; newer edits take precedence during a merge.
 
 ## Storage and limitations

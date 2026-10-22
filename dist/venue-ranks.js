@@ -100,7 +100,21 @@ export const journalVenues=[
  ['7.5','IEEE TDSC','TDSC','T-DSC','IEEE Transactions on Dependable and Secure Computing'],
  ['2.9','IEEE TCAD','TCAD','T-CAD','IEEE Transactions on Computer Aided Design of Integrated Circuits and Systems'],
  ['3.8','IEEE TC','TC','T-C','IEEE Transactions on Computers'],
- ['2.9','IEEE TIT','TIT','T-IT','IEEE Transactions on Information Theory']
+ ['2.9','IEEE TIT','TIT','T-IT','IEEE Transactions on Information Theory'],
+ ['8.3','IEEE TCOM','TCOM','TCOMM','T-COMM','IEEE Transactions on Communications','IEEE Transactions on Communications TCOM','IEEE Transactions on Communications TCOMM','IEEE Trans. Commun.'],
+ ['10.7','IEEE TWC','TWC','T-WC','IEEE Transactions on Wireless Communications','IEEE Trans. Wireless Commun.'],
+ ['17.2','IEEE JSAC','JSAC','J-SAC','IEEE Journal on Selected Areas in Communications','IEEE J. Sel. Areas Commun.'],
+ ['46.7','IEEE COMST','COMST','IEEE Communications Surveys and Tutorials','IEEE Commun. Surveys Tuts.'],
+ ['4.4','IEEE Communications Letters','COMML','L-COMM','IEEE Commun. Lett.'],
+ ['5.5','IEEE WCL','WCL','L-WC','IEEE Wireless Communications Letters','IEEE Wireless Commun. Lett.'],
+ ['6.1','IEEE OJCOMS','OJCOMS','IEEE Open Journal of the Communications Society','IEEE Open J. Commun. Soc.'],
+ ['7.0','IEEE TCCN','TCCN','T-CCN','IEEE Transactions on Cognitive Communications and Networking','IEEE Trans. Cogn. Commun. Netw.'],
+ ['6.7','IEEE TGCN','TGCN','T-GCN','IEEE Transactions on Green Communications and Networking','IEEE Trans. Green Commun. Netw.'],
+ ['7.1','IEEE TVT','TVT','T-VT','IEEE Transactions on Vehicular Technology','IEEE Trans. Veh. Technol.'],
+ ['3.6','IEEE TON','TON','T-ON','IEEE Transactions on Networking','IEEE ACM Transactions on Networking','IEEE Trans. Netw.','IEEE ACM Trans. Netw.','IEEE Transactions on Networking TON','IEEE ACM Transactions on Networking TON'],
+ ['5.4','IEEE TNSM','TNSM','T-NSM','IEEE Transactions on Network and Service Management','IEEE Trans. Netw. Serv. Manag.'],
+ ['7.9','IEEE TNSE','TNSE','T-NSE','IEEE Transactions on Network Science and Engineering','IEEE Trans. Netw. Sci. Eng.'],
+ ['8.9','IEEE IoTJ','IoTJ','IoT-J','J-IOT','IEEE Internet of Things Journal','IEEE Internet Things J.']
 ].map(([rank,name,...aliases])=>({name,rank,metricType:'Journal impact factor',year:2024,source:ieeeJournalSource,aliases:[name,...aliases]}));
 // Recognized journal; no verified dated metric is available in these sources.
 journalVenues.push({name:'IACR CiC',aliases:['CiC','IACR CiC','Communications in Cryptology','IACR Communications in Cryptology'],source:'https://cic.iacr.org/'});

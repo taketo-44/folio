@@ -76,3 +76,37 @@ for(const alias of ['CiC','IACR CiC','Communications in Cryptology','IACR Commun
 console.log('Journal aliases, dated IEEE impact factors and CiC without invented metrics passed.');
 
 for(const alias of ['CC','IACR CC'])assert.equal(presetVenueRank(alias),null,alias);
+
+// Communications journal families retain the metric year and avoid abbreviation collisions.
+for(const [input,name,rank] of [
+ ['IEEE transactions on Communications','IEEE TCOM','8.3'],
+ ['TCOM','IEEE TCOM','8.3'],['TCOMM 2026','IEEE TCOM','8.3'],
+ ['IEEE Trans. Commun.','IEEE TCOM','8.3'],
+ ['IEEE Transactions on Communications (TCOM)','IEEE TCOM','8.3'],
+ ['Transaction of Communications','IEEE TCOM','8.3'],
+ ['IEEE T-COMM','IEEE TCOM','8.3'],
+ ['IEEE Transactions on Wireless Communications (TWC)','IEEE TWC','10.7'],
+ ['IEEE Trans. Wireless Commun.','IEEE TWC','10.7'],
+ ['IEEE Journal on Selected Areas in Communications','IEEE JSAC','17.2'],
+ ['IEEE Communications Surveys & Tutorials','IEEE COMST','46.7'],
+ ['IEEE Communications Letters','IEEE Communications Letters','4.4'],
+ ['IEEE Wireless Communications Letters','IEEE WCL','5.5'],
+ ['IEEE Open Journal of the Communications Society','IEEE OJCOMS','6.1'],
+ ['IEEE Transactions on Cognitive Communications & Networking','IEEE TCCN','7.0'],
+ ['IEEE Transactions on Green Communications and Networking','IEEE TGCN','6.7'],
+ ['IEEE TVT','IEEE TVT','7.1'],
+ ['IEEE/ACM Transactions on Networking','IEEE TON','3.6'],
+ ['IEEE/ACM Transactions on Networking (TON)','IEEE TON','3.6'],
+ ['IEEE Transactions on Network and Service Management','IEEE TNSM','5.4'],
+ ['IEEE Transactions on Network Science and Engineering','IEEE TNSE','7.9'],
+ ['IEEE Internet of Things Journal','IEEE IoTJ','8.9']
+]){
+ const metric=presetVenueRank(input);assert.equal(metric?.name,name,input);assert.equal(metric.rank,rank,input);
+ assert.equal(metric.metricType,'Journal impact factor');assert.equal(metric.year,2024);
+ assert.match(metric.source,/IEEE-Title-List-January-2026\.pdf$/);
+}
+assert.equal(presetVenueRank('TC').name,'IEEE TC');assert.equal(presetVenueRank('TCC').name,'TCC');
+for(const input of ['CC','Communications','IEEE Communications Magazine','TWC unrelated event','IEEE Transactions on Communications Workshops']){
+ assert.equal(presetVenueRank(input),null,input);
+}
+console.log('Communications journals: full titles, standard abbreviations, dated metrics and unrelated names passed.');
