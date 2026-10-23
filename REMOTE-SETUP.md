@@ -195,7 +195,19 @@ Open `https://folio.take10-44.site`, refresh, and sign in as **owner** with your
 
 Invitees choose a username and a password of at least 16 characters. They start with an empty citation library and can save paper URLs, tags, notes, and reading flags. No Google account or OAuth setup is needed.
 
-The owner can disable and re-enable member accounts. Disabling revokes their sessions immediately but keeps their library. The owner cannot disable the owner account. Account management does not provide access to members' libraries. Each user can change their password in Settings, which signs out their other sessions. After migration, `FOLIO_PASSWORD_HASH` is only a bootstrap setting; changing it does not overwrite account passwords in the database.
+The owner can disable and re-enable member accounts. Disabling revokes their sessions immediately but keeps their library. The owner cannot disable the owner account. Account management does not provide access to members' paper contents; the owner can view aggregate account activity as described below. Each user can change their password in Settings, which signs out their other sessions. After migration, `FOLIO_PASSWORD_HASH` is only a bootstrap setting; changing it does not overwrite account passwords in the database.
+
+### Owner account activity
+
+Sign in as the owner and open **Settings → Your account → Account activity**. The view shows the total, enabled and disabled account counts (including the owner), each username’s current saved-paper count, and daily paper additions and AI request attempts. Select the last 7, 30 or 90 days and choose a username for the daily table. Refresh reloads the counts.
+
+The owner-only `/api/admin/activity` endpoint returns account identity/status and aggregate counts. It does not return passwords, password hashes, session tokens, paper titles, authors, abstracts, notes, collections or classification input. Members cannot access this endpoint. Members are informed in account settings that aggregate counts are visible to the owner.
+
+Days use **UTC**, matching the existing AI daily quota. AI attempts include provider failures and stale results that reached the provider; requests rejected before the provider call are not counted. These are request counts, not tokens or monetary costs. Earlier AI counts are retained when still present at upgrade, but deleted history cannot be recovered.
+
+Paper-addition history starts when this version is first deployed. Counts use the server’s successful save time rather than a paper’s client-supplied date. Edits and conflicting/rejected saves do not count; imports and re-adding a removed paper count as additions. Starter examples are excluded from paper counts. Removing a paper lowers the current saved-paper count without erasing its recorded addition. Days before tracking started show **—**; the first tracking day may be partial. Existing papers contribute to the current count without inventing historical additions.
+
+Database schema version 5 automatically adds aggregate activity tables without changing libraries, passwords or sessions. Activity queries cover at most 90 days; older paper/AI rows are pruned when the respective new activity is recorded. No separate monitoring service or API key is required. Deploy using the usual Git update workflow; there is no manual backfill command.
 
 ### Forgotten password recovery
 

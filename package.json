@@ -5,7 +5,7 @@
   "scripts": {
     "preview": "node server/preview.mjs",
     "start": "node server/app.mjs",
-    "test": "node --check dist/app.js && node tests/venue-ranks.test.mjs && node tests/starter.test.mjs && node tests/data.test.mjs && node tests/metadata.test.mjs && node tests/eprint.test.mjs && node tests/arxiv.test.mjs && node tests/server.test.mjs && node tests/users.test.mjs && node tests/security.test.mjs && node tests/preview-security.test.mjs && node tests/classify.test.mjs && node tests/remote.test.mjs"
+    "test": "node --check dist/app.js && node tests/venue-ranks.test.mjs && node tests/starter.test.mjs && node tests/data.test.mjs && node tests/metadata.test.mjs && node tests/eprint.test.mjs && node tests/arxiv.test.mjs && node tests/server.test.mjs && node tests/users.test.mjs && node tests/activity.test.mjs && node tests/security.test.mjs && node tests/preview-security.test.mjs && node tests/classify.test.mjs && node tests/remote.test.mjs"
   },
   "engines": {
     "node": ">=24"

@@ -64,7 +64,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
   mkdirSync(dirname(dbPath), {recursive:true, mode:0o700});
   const db = new DatabaseSync(dbPath);
   db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;');
-  if (db.prepare('PRAGMA user_version').get().user_version>4) {db.close();throw new Error('This database requires a newer Folio version.');}
+  if (db.prepare('PRAGMA user_version').get().user_version>5) {db.close();throw new Error('This database requires a newer Folio version.');}
   const username = value => {
     if(typeof value!=='string')fail(400,'Enter a username.');
     const name=value.trim().toLowerCase();
@@ -79,6 +79,8 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
       CREATE TABLE IF NOT EXISTS user_sessions (id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), csrf TEXT NOT NULL, expires INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS sessions_by_user ON user_sessions(user_id);
       CREATE TABLE IF NOT EXISTS ai_usage (user_id INTEGER NOT NULL REFERENCES users(id), day TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(user_id,day));
+      CREATE TABLE IF NOT EXISTS paper_activity (user_id INTEGER NOT NULL REFERENCES users(id), day TEXT NOT NULL, papers_added INTEGER NOT NULL, PRIMARY KEY(user_id,day));
+      CREATE TABLE IF NOT EXISTS activity_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS invitations (id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, created_by INTEGER NOT NULL REFERENCES users(id), expires INTEGER NOT NULL, created INTEGER NOT NULL);`);
     if(!db.prepare('SELECT id FROM users LIMIT 1').get()){
       const legacy=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='library'").get()?db.prepare('SELECT revision,data FROM library WHERE id=1').get():null;
@@ -95,7 +97,8 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
         if(changed)db.prepare('UPDATE user_libraries SET data=?,revision=revision+1 WHERE user_id=?').run(JSON.stringify(data),row.user_id);
       }
     }
-    db.exec('PRAGMA user_version=4');
+    db.prepare('INSERT OR IGNORE INTO activity_metadata VALUES (?,?)').run('started_at',new Date().toISOString());
+    db.exec('PRAGMA user_version=5');
   })}catch(err){db.close();throw err}
   const publicUser = user => ({id:user.id,username:user.username,role:user.role});
   const snapshot = user => { const row = db.prepare('SELECT revision,data FROM user_libraries WHERE user_id=?').get(user.id); return {...JSON.parse(row.data),revision:row.revision,user:publicUser(user)}; };
@@ -188,8 +191,20 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
         if (url.pathname === '/api/library' && req.method === 'PUT') {
           const data=validate(await readAuthenticatedJSON(10*1024*1024));
           if (!Number.isSafeInteger(data.revision) || data.revision<0) fail(400,'Invalid revision.');
-          const result=db.prepare('UPDATE user_libraries SET data=?,revision=revision+1 WHERE user_id=? AND revision=?').run(JSON.stringify({papers:data.papers,settings:data.settings}),user.id,data.revision);
-          if (!result.changes) { reply(res,409,{error:'Your library changed on another device. The latest library was loaded; review and retry your edit.',library:snapshot(user)});return; }
+          const changed=transaction(()=>{
+            const previous=db.prepare('SELECT revision,data FROM user_libraries WHERE user_id=?').get(user.id);
+            if(previous.revision!==data.revision)return false;
+            const ids=new Set(JSON.parse(previous.data).papers.map(p=>p.id));
+            const added=data.papers.filter(p=>!ids.has(p.id)&&p.sample!==true).length;
+            db.prepare('UPDATE user_libraries SET data=?,revision=revision+1 WHERE user_id=? AND revision=?').run(JSON.stringify({papers:data.papers,settings:data.settings}),user.id,data.revision);
+            if(added){
+              const day=new Date().toISOString().slice(0,10),cutoff=new Date(Date.now()-89*86400000).toISOString().slice(0,10);
+              db.prepare('DELETE FROM paper_activity WHERE day<?').run(cutoff);
+              db.prepare('INSERT INTO paper_activity VALUES (?,?,?) ON CONFLICT(user_id,day) DO UPDATE SET papers_added=papers_added+excluded.papers_added').run(user.id,day,added);
+            }
+            return true;
+          });
+          if (!changed) { reply(res,409,{error:'Your library changed on another device. The latest library was loaded; review and retry your edit.',library:snapshot(user)});return; }
           reply(res,200,snapshot(user));return;
         }
         if(url.pathname==='/api/ai'&&req.method==='GET'){reply(res,200,{configured:classifier.enabled===true,dailyLimit:aiUserDailyLimit});return;}
@@ -207,7 +222,7 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
             const used=db.prepare('SELECT count FROM ai_usage WHERE user_id=? AND day=?').get(user.id,day)?.count||0;
             const total=db.prepare('SELECT coalesce(sum(count),0) n FROM ai_usage WHERE day=?').get(day).n;
             if(used>=aiUserDailyLimit||total>=aiDailyLimit)fail(429,'The daily automatic collection limit has been reached.');
-            db.prepare('DELETE FROM ai_usage WHERE day<?').run(day);
+            db.prepare('DELETE FROM ai_usage WHERE day<?').run(new Date(Date.now()-89*86400000).toISOString().slice(0,10));
             db.prepare('INSERT INTO ai_usage VALUES (?,?,1) ON CONFLICT(user_id,day) DO UPDATE SET count=count+1').run(user.id,day);
           });
           aiPending.add(user.id);
@@ -234,6 +249,26 @@ export function createApp({origin, hash, dbPath, ownerName = 'owner', allowHttp 
         }
         if(url.pathname.startsWith('/api/admin/')){
           if(user.role!=='owner')fail(403,'Only the owner can manage accounts.');
+          if(url.pathname==='/api/admin/activity'&&req.method==='GET'){
+            const period=url.searchParams.get('days')||'30';
+            if(!['7','30','90'].includes(period)||url.searchParams.getAll('days').length>1||[...url.searchParams.keys()].some(key=>key!=='days'))fail(400,'Choose a 7, 30 or 90 day activity period.');
+            const days=Number(period),now=Date.now(),to=new Date(now).toISOString().slice(0,10),from=new Date(now-(days-1)*86400000).toISOString().slice(0,10);
+            // Only aggregate counts are selected; libraries and credentials never enter this response.
+            const accounts=db.prepare(`SELECT u.id,u.username,u.role,u.enabled,
+              (SELECT count(*) FROM json_each(l.data,'$.papers') p WHERE coalesce(json_extract(p.value,'$.sample'),0)!=1) AS paperCount
+              FROM users u JOIN user_libraries l ON l.user_id=u.id ORDER BY u.id`).all();
+            const daily=new Map(accounts.map(account=>[account.id,new Map()]));
+            for(const row of db.prepare('SELECT user_id,day,papers_added FROM paper_activity WHERE day>=? AND day<=?').all(from,to)){
+              daily.get(row.user_id)?.set(row.day,{day:row.day,papersAdded:row.papers_added,aiRequests:0});
+            }
+            for(const row of db.prepare('SELECT user_id,day,count FROM ai_usage WHERE day>=? AND day<=?').all(from,to)){
+              const entries=daily.get(row.user_id);if(!entries)continue;
+              const entry=entries.get(row.day)||{day:row.day,papersAdded:0,aiRequests:0};entry.aiRequests=row.count;entries.set(row.day,entry);
+            }
+            reply(res,200,{totalAccounts:accounts.length,enabledAccounts:accounts.filter(account=>account.enabled).length,timezone:'UTC',days,from,to,
+              trackingStartedAt:db.prepare('SELECT value FROM activity_metadata WHERE key=?').get('started_at').value,
+              accounts:accounts.map(account=>({...account,daily:[...daily.get(account.id).values()].sort((a,b)=>a.day.localeCompare(b.day))}))});return;
+          }
           if(url.pathname==='/api/admin/users'&&req.method==='GET'){
             reply(res,200,{users:db.prepare('SELECT id,username,role,enabled,created FROM users ORDER BY id').all()});return;
           }

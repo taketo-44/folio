@@ -134,3 +134,25 @@ failSave=true;await assert.rejects(run("moveCollection('ML-DSA','PQC')"),/Server
 failSave=false;const beforeMove=putCount();await run("moveCollection('ML-DSA','PQC')");assert.equal(putCount(),beforeMove+1);assert.equal(library.papers[0].tags[0],'PQC/ML-DSA');assert.equal(library.papers[1].tags[0],'PQC/ML-DSA/Implementations');assert.equal(library.papers[0].notes,'Keep notes');assert.ok(library.settings.collections.includes('PQC/ML-DSA'));assert.deepEqual(Array.from(run('activeCollections()')),['PQC/ML-DSA','Other']);
 run('showLogin()');assert.deepEqual(Array.from(run('activeCollections()')),[]);
 console.log('Branch moves: atomic server save, failure recovery, selection updates, and sign-out clearing passed.');
+
+// Owners can inspect aggregate activity; members have no entry point or requests.
+const activityToday=new Date().toISOString().slice(0,10),activityYesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
+let activityRequests=0,lastActivityPath='',activityFailure=false;
+const activityFixture={totalAccounts:2,enabledAccounts:1,timezone:'UTC',days:7,from:new Date(Date.now()-6*86400000).toISOString().slice(0,10),to:activityToday,trackingStartedAt:activityToday+'T00:00:00.000Z',accounts:[{id:1,username:'owner',role:'owner',enabled:1,paperCount:2,daily:[]},{id:2,username:'alice',role:'member',enabled:0,paperCount:4,daily:[{day:activityToday,papersAdded:3,aiRequests:2}]}]};
+context.fetch=async(path)=>{activityRequests++;lastActivityPath=path;return activityFailure?new Response('{"error":"Activity unavailable"}',{status:503}):new Response(JSON.stringify(activityFixture))};
+run("acceptRemote({user:{id:1,username:'owner',role:'owner'},papers:[],settings:{},revision:0});view='settings';renderRemoteSettings()");
+assert.match(node('#main').innerHTML,/id="account-activity"/);
+await run("showAccountActivity('7')");assert.equal(lastActivityPath,'/api/admin/activity?days=7');
+assert.match(node('#modal-content').innerHTML,/2 accounts · 1 enabled · 1 disabled/);assert.match(node('#modal-content').innerHTML,/Saved papers/);assert.match(node('#modal-content').innerHTML,/AI requests in period/);
+assert.match(node('#activity-daily').innerHTML,/alice \(UTC\)/);assert.match(node('#activity-daily').innerHTML,/<td>3<\/td><td>2<\/td>/);
+assert.match(node('#activity-daily').innerHTML,/<td>—<\/td><td>—<\/td>/,'unrecorded historical days must not appear as zero');
+node('#activity-user').value='1';node('#activity-user').onchange();assert.match(node('#activity-daily').innerHTML,/owner \(UTC\)/);
+node('#activity-period').value='30';await node('#activity-period').onchange();assert.equal(lastActivityPath,'/api/admin/activity?days=30');assert.equal(node('#activity-user').value,'1');
+activityFailure=true;await run('showAccountActivity()');assert.match(node('#modal-content').innerHTML,/Activity unavailable/);activityFailure=false;
+run("acceptRemote({user:{id:2,username:'alice',role:'member'},papers:[],settings:{},revision:0});renderRemoteSettings()");assert.doesNotMatch(node('#main').innerHTML,/id="account-activity"/);
+const beforeActivity=activityRequests;await run('showAccountActivity()');assert.equal(activityRequests,beforeActivity);
+run("acceptRemote({user:{id:1,username:'owner',role:'owner'},papers:[],settings:{},revision:0})");
+let deliverActivity;context.fetch=()=>new Promise(resolve=>deliverActivity=resolve);
+const lateActivity=run('showAccountActivity()');run('showLogin()');deliverActivity(new Response(JSON.stringify(activityFixture)));await lateActivity;
+assert.equal(run('currentUser'),null);assert.equal(node('#modal').open,false);
+console.log('Owner activity UI: summaries, daily selection, unknown history, periods, errors and account isolation passed.');

@@ -29,7 +29,7 @@ try{
  const port=await open();
  assert.equal(await login(owner,'OWNER',password),200);
  const migrated=await library(owner);assert.equal(migrated.revision,8);assert.equal(migrated.papers[0].importance,3);assert.equal(migrated.papers[0].notes,'Owner notes');assert.deepEqual(migrated.settings.collections,['Owner tag']);assert.equal(migrated.user.role,'owner');
- const inspection=new DatabaseSync(dbPath);assert.equal(inspection.prepare('SELECT count(*) n FROM sessions').get().n,0);assert.equal(inspection.prepare('PRAGMA user_version').get().user_version,4);
+ const inspection=new DatabaseSync(dbPath);assert.equal(inspection.prepare('SELECT count(*) n FROM sessions').get().n,0);assert.equal(inspection.prepare('PRAGMA user_version').get().user_version,5);
  assert.equal((await request({},'/api/admin/invitations','POST',{})).status,401);
  assert.equal((await request(owner,'/api/admin/invitations','POST',{}, {'X-CSRF-Token':'bad'})).status,403);
  assert.equal((await request(owner,'/api/admin/invitations','POST',{}, {Origin:'https://elsewhere.example'})).status,403);
